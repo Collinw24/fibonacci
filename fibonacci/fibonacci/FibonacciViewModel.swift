@@ -9,6 +9,7 @@
 import Foundation
 import BigInt
 import Observation
+import Combine
 
 /// Pure ring exponentiation with deterministic predictive stopping
 /// Use @MainActor to ensure UI property updates work correctly with @Observable
@@ -28,6 +29,7 @@ final class FibonacciViewModel {
     var currentN: UInt64 = 0
     var currentTimeMs: Double = 0.0
     var totalElapsedMs: Double = 0.0
+    var currentFibonacci: BigInt = 0
     
     // Results
     var maxN: UInt64 = 0
@@ -46,38 +48,55 @@ final class FibonacciViewModel {
     var graphData: [GraphPoint] = []
     
     // Thread-safe storage for UI updates (non-blocking, lock-free)
-    // Marked nonisolated because we manually manage concurrency with DispatchQueue
-    // These are not tracked by @Observable (they're private implementation details)
-    nonisolated private let updateQueue = DispatchQueue(label: "fibonacci.updates", attributes: .concurrent)
-    nonisolated private var _latestN: UInt64 = 0
-    nonisolated private var _latestTimeMs: Double = 0.0
-    nonisolated private var _latestTotalElapsed: Double = 0.0
-    nonisolated private var _latestFib: BigInt = BigInt(0)
+    // Marked nonisolated(unsafe) because we manually manage concurrency with DispatchQueue
+    // These are NOT tracked by @Observable - explicitly ignored to prevent macro expansion errors
+    @ObservationIgnored nonisolated private let updateQueue = DispatchQueue(label: "fibonacci.updates", attributes: .concurrent)
+    @ObservationIgnored nonisolated(unsafe) private var _latestN: UInt64 = 0
+    @ObservationIgnored nonisolated(unsafe) private var _latestTimeMs: Double = 0.0
+    @ObservationIgnored nonisolated(unsafe) private var _latestTotalElapsed: Double = 0.0
+    @ObservationIgnored nonisolated(unsafe) private var _latestFib: BigInt = BigInt(0)
     // Store raw computation data for graph generation (separate from computation loop)
-    nonisolated private var _computationHistory: [(n: UInt64, timeMs: Double, timestamp: Double)] = []
+    @ObservationIgnored nonisolated(unsafe) private var _computationHistory: [(n: UInt64, timeMs: Double, timestamp: Double)] = []
     
     // Direct property access - these are simple values, atomic reads/writes are safe
     // We use simple assignment (non-atomic but fast) - small risk of partial reads but acceptable for UI updates
-    nonisolated private func updateLatestValues(n: UInt64, timeMs: Double, totalElapsed: Double) {
+    nonisolated private func updateLatestValues(n: UInt64, timeMs: Double, totalElapsed: Double, fib: BigInt) {
         // Direct assignment - no barrier needed for simple values
         _latestN = n
         _latestTimeMs = timeMs
         _latestTotalElapsed = totalElapsed
+        _latestFib = fib
     }
     
     // Batch storage to avoid flooding the queue
     // Store only every Nth result to reduce write frequency
-    nonisolated private var _historyWriteCounter: UInt64 = 0
+    @ObservationIgnored nonisolated(unsafe) private var _historyWriteCounter: UInt64 = 0
     
-    // Store computation result for graph generation (batched, non-blocking)
+    // Counter for graph update throttling
+    @ObservationIgnored nonisolated(unsafe) private var _updateCounter: Int = 0
+    
+    // Store computation result for graph generation (frequent writes for smooth updates)
     nonisolated private func storeComputationResult(n: UInt64, timeMs: Double, totalElapsed: Double) {
-        // Only store every 10th result (or first 100) to reduce write frequency
-        if n <= 100 || n % 10 == 0 {
+        // Store every result for first 1000, then every 5th for smooth graph
+        if n <= 1000 || n % 5 == 0 {
             updateQueue.async(flags: .barrier) {
                 self._computationHistory.append((n: n, timeMs: timeMs, timestamp: totalElapsed))
-                // Keep history manageable (last 10000 entries max)
-                if self._computationHistory.count > 10000 {
-                    self._computationHistory.removeFirst(5000)
+                // Keep history manageable but preserve early data
+                // Increased limit to 20000 to delay trimming and preserve more early iterations
+                if self._computationHistory.count > 20000 {
+                    // Always preserve first 1000 entries (critical for graph shape at start)
+                    // Then keep last 19000 entries (includes some overlap but ensures continuity)
+                    let earlyData = Array(self._computationHistory.prefix(1000))
+                    let recentData = Array(self._computationHistory.suffix(19000))
+                    // Remove duplicates (entries that appear in both early and recent)
+                    var combined = earlyData
+                    let earlyMaxN = earlyData.last?.n ?? 0
+                    for entry in recentData {
+                        if entry.n > earlyMaxN {
+                            combined.append(entry)
+                        }
+                    }
+                    self._computationHistory = combined
                 }
             }
         }
@@ -87,11 +106,45 @@ final class FibonacciViewModel {
     nonisolated private func getComputationHistoryForGraph() async -> [(n: UInt64, timeMs: Double, timestamp: Double)] {
         return await withCheckedContinuation { continuation in
             updateQueue.async {
-                // Sample history: take every Nth entry to keep graph smooth but manageable
-                let sampleRate = max(1, self._computationHistory.count / 2000) // Max 2000 points for graph
-                let sampled = self._computationHistory.enumerated().compactMap { index, value in
-                    index % sampleRate == 0 ? value : nil
+                guard !self._computationHistory.isEmpty else {
+                    continuation.resume(returning: [])
+                    return
                 }
+                
+                // Smart sampling: preserve points across the full range to prevent data loss
+                // Take ~1000 points distributed across beginning, middle, and end
+                let targetPoints = 1000
+                let count = self._computationHistory.count
+                
+                var sampled: [(n: UInt64, timeMs: Double, timestamp: Double)] = []
+                
+                if count <= targetPoints {
+                    // If we have fewer than target, include all
+                    sampled = self._computationHistory
+                } else {
+                    // Always preserve first 100 entries (early iterations are critical for graph shape)
+                    let earlyCount = min(100, count / 10)
+                    sampled.append(contentsOf: Array(self._computationHistory.prefix(earlyCount)))
+                    
+                    // Sample middle section (every Nth entry)
+                    let remainingNeeded = targetPoints - sampled.count - 1 // -1 for last entry
+                    let middleStart = earlyCount
+                    let middleEnd = count - 1
+                    let middleRange = middleEnd - middleStart
+                    
+                    if middleRange > 0 && remainingNeeded > 0 {
+                        let middleStep = max(1, middleRange / remainingNeeded)
+                        for i in stride(from: middleStart, to: middleEnd, by: middleStep) {
+                            sampled.append(self._computationHistory[i])
+                        }
+                    }
+                    
+                    // Always include the last entry
+                    if count > 1 && sampled.last?.n != self._computationHistory[count - 1].n {
+                        sampled.append(self._computationHistory[count - 1])
+                    }
+                }
+                
                 continuation.resume(returning: sampled)
             }
         }
@@ -112,7 +165,7 @@ final class FibonacciViewModel {
     }
     
     private var task: Task<Void, Never>?
-    private var uiUpdateTask: Task<Void, Never>?
+    private var updateCancellable: AnyCancellable?
     
     // Golden ratio for spiral calculations
     private static let goldenRatio = (1.0 + sqrt(5.0)) / 2.0
@@ -121,40 +174,27 @@ final class FibonacciViewModel {
     // MARK: - Public
     
     func start() {
-        guard state != .running else {
-            print("[ViewModel] start() called but already running, ignoring")
-            return
-        }
-        
-        print("[ViewModel] ========== STARTING COMPUTATION ==========")
-        print("[ViewModel] State: idle -> running")
+        guard state != .running else { return }
         
         state = .running
         currentN = 0
         currentTimeMs = 0.0
         totalElapsedMs = 0.0
+        currentFibonacci = 0
         maxN = 0
         finalFibonacci = 0
         finalDigitCount = 0
         finalTimeMs = 0.0
         graphData = []
         
-        print("[ViewModel] Initialized all state variables to 0/empty")
-        
-        // Start UI update timer (runs separately from computation, tries to keep up)
+        // Start UI update timer (runs separately from computation)
         startUIUpdateTimer()
         
-        // Run computation on background thread using Task with explicit priority
-        task = Task(priority: .userInitiated) { [weak self] in
-            guard let self = self else {
-                print("[ViewModel] ERROR: self is nil in Task")
-                return
-            }
-            print("[ViewModel] Task started, calling runPurePowering()")
+        // Run computation on background thread using Task.detached to force background executor
+        task = Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return }
             await self.runPurePowering()
         }
-        
-        print("[ViewModel] Task created and started")
     }
     
     func reset() {
@@ -164,6 +204,7 @@ final class FibonacciViewModel {
         currentN = 0
         currentTimeMs = 0.0
         totalElapsedMs = 0.0
+        currentFibonacci = 0
         maxN = 0
         finalFibonacci = 0
         finalDigitCount = 0
@@ -180,68 +221,56 @@ final class FibonacciViewModel {
     // MARK: - UI Update Timer
     
     private func startUIUpdateTimer() {
-        // Stop existing timer if any
-        uiUpdateTask?.cancel()
+        stopUIUpdateTimer()
         
-        print("[ViewModel] Starting UI update timer (Task-based)")
-        
-        // Use Task-based timer loop - more reliable than Timer in async contexts
-        uiUpdateTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            
-            var iteration = 0
-            while !Task.isCancelled {
-                iteration += 1
+        // Update UI every 100ms (10 updates per second) - smooth and responsive
+        _updateCounter = 0
+        updateCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self = self else { return }
                 
-                // Pull latest values directly (simple atomic reads, no sync block)
-                let n = self._latestN
-                let timeMs = self._latestTimeMs
-                let totalElapsed = self._latestTotalElapsed
-                
-                // Log every ~3 seconds (30 iterations * 100ms = ~3s)
-                if iteration % 30 == 0 {
-                    print("[Timer] Iteration \(iteration): n=\(n), timeMs=\(String(format: "%.3f", timeMs))")
+                // Check if computation is still running
+                guard self.state == .running else {
+                    self.updateCancellable?.cancel()
+                    self.updateCancellable = nil
+                    return
                 }
                 
-                // Update properties directly - we're on MainActor, @Observable will detect
-                self.currentN = n
-                self.currentTimeMs = timeMs
-                self.totalElapsedMs = totalElapsed
+                self._updateCounter += 1
                 
-                // Generate graph points from computation history (async to avoid blocking)
-                // Update graph less frequently (every 3 ticks) to reduce SwiftUI recomputes
-                if iteration % 3 == 0 {
-                    let history = await self.getComputationHistoryForGraph()
-                    if !history.isEmpty {
-                        // Convert history to graph points (sample appropriately)
-                        let newPoints = history.map { entry -> GraphPoint in
-                            // Approximate digit count (fast, no BigInt conversion needed)
-                            let digitCount = Int(Double(entry.n) * 0.209) // log10(φ) ≈ 0.209
-                            return GraphPoint(n: entry.n, timeMs: entry.timeMs, digitCount: digitCount)
+                // Always update these — fast and smooth
+                self.currentN = self._latestN
+                self.currentTimeMs = self._latestTimeMs
+                self.totalElapsedMs = self._latestTotalElapsed
+                self.currentFibonacci = self._latestFib
+                
+                // Update graph every 5th fire (~500ms) for smooth curve growth
+                if self._updateCounter % 5 == 0 {
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
+                        let history = await self.getComputationHistoryForGraph()
+                        if !history.isEmpty {
+                            let newPoints = history.map { entry in
+                                let digitCount = Int(Double(entry.n) * 0.209)
+                                return GraphPoint(n: entry.n, timeMs: entry.timeMs, digitCount: digitCount)
+                            }
+                            self.graphData = newPoints
                         }
-                        self.graphData = newPoints
                     }
                 }
-                
-                // Sleep for ~100ms (~10fps) for better performance during rapid computation
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             }
-        }
-        
-        print("[ViewModel] Timer task created")
     }
     
     private func stopUIUpdateTimer() {
-        uiUpdateTask?.cancel()
-        uiUpdateTask = nil
+        updateCancellable?.cancel()
+        updateCancellable = nil
     }
     
     // MARK: - Core: Sequential Computation with Real-Time Graphing
     
     // Mark as nonisolated so it can run off MainActor (on background thread)
     nonisolated private func runPurePowering() async {
-        print("[ViewModel] runPurePowering() - STARTED")
-        
         let clock = ContinuousClock()
         let overallStartTime = clock.now
         let maxComputationMs: Double = 1000.0  // Stop when a single computation takes >= 1000ms
@@ -249,16 +278,12 @@ final class FibonacciViewModel {
         var n: UInt64 = 1
         var lastFib: BigInt = BigInt(0)
         
-        print("[ViewModel] About to compute first F(n)")
-        
         // Immediate UI update to show computation started
         await MainActor.run {
             self.currentN = 1
             self.currentTimeMs = 0.0
             self.totalElapsedMs = 0.0
         }
-        
-        print("[ViewModel] First UI update complete, starting loop")
         
         while true {
             // Compute F(n) and measure time - THIS IS THE ONLY THING THIS LOOP DOES
@@ -268,11 +293,6 @@ final class FibonacciViewModel {
             let compTimeMs = durationToMs(compDuration)
             let now = clock.now
             let totalElapsed = durationToMs(overallStartTime.duration(to: now))
-            
-            // Log every computation (n increments by 1 each time)
-            if n <= 10 || n % 1000 == 0 {
-                print("[ViewModel] F(\(n)) computed in \(String(format: "%.3f", compTimeMs))ms")
-            }
             
             // Check if this computation took too long BEFORE storing it
             if compTimeMs >= maxComputationMs {
@@ -287,17 +307,11 @@ final class FibonacciViewModel {
             // Graph generation happens separately in the UI timer - NO graph logic here!
             // DON'T use await MainActor.run here - that would block the computation!
             // Just write to thread-safe storage, timer will read and update UI
-            updateLatestValues(n: n, timeMs: compTimeMs, totalElapsed: totalElapsed)
+            updateLatestValues(n: n, timeMs: compTimeMs, totalElapsed: totalElapsed, fib: fib)
             storeComputationResult(n: n, timeMs: compTimeMs, totalElapsed: totalElapsed)
             
             n += 1
             
-            // Temporary safeguard to prevent infinite runs during testing
-            // Remove after confirming FFT fixes work correctly
-            if n > 50_000 {
-                print("[ViewModel] Emergency break at n=\(n) (temporary safeguard)")
-                break
-            }
         }
         
         // Final results - n is the one that took too long, so n-1 is the last valid
@@ -348,17 +362,7 @@ final class FibonacciViewModel {
             exp >>= 1
         }
         
-        let result = fib.b
-        
-        // Temporary verification prints (remove after confirming fixes)
-        if n == 10 {
-            print("[ViewModel] F(10): \(result) (should be 55)")
-        }
-        if n == 100 {
-            print("[ViewModel] F(100): \(result) (should be 354224848179261915075)")
-        }
-        
-        return result
+        return fib.b
     }
     
     nonisolated private func durationToMs(_ d: Duration) -> Double {

@@ -13,15 +13,15 @@ import BigInt
 /// FFT-based multiplication for BigInt operations
 enum FFTMultiplier {
     
-    private static let maxFFTSize = 1 << 24
+    nonisolated private static let maxFFTSize = 1 << 24
     
     /// Base for FFT digits: 2^15 = 32768
-    private static let fftBase: Int64 = 32768
-    private static let fftBaseBits: Int = 15
+    nonisolated private static let fftBase: Int64 = 32768
+    nonisolated private static let fftBaseBits: Int = 15
     
     // MARK: - Public Interface
     
-    static func multiply(_ a: BigInt, _ b: BigInt) -> BigInt {
+    nonisolated static func multiply(_ a: BigInt, _ b: BigInt) -> BigInt {
         let aMag = a.magnitude
         let bMag = b.magnitude
         let combinedBits = aMag.bitWidth + bMag.bitWidth
@@ -54,7 +54,7 @@ enum FFTMultiplier {
         return result
     }
     
-    static func square(_ a: BigInt) -> BigInt {
+    nonisolated static func square(_ a: BigInt) -> BigInt {
         let aMag = a.magnitude
         
         if a == 0 {
@@ -83,7 +83,7 @@ enum FFTMultiplier {
     
     /// Convert BigInt magnitude to base-2^15 digits using BigUInt division
     /// O(n) - uses BigUInt modulo and division operations (safe, no shift truncation issues)
-    private static func magnitudeToDigits(_ mag: BigInt.Magnitude) -> [Double] {
+    nonisolated private static func magnitudeToDigits(_ mag: BigInt.Magnitude) -> [Double] {
         if mag == 0 {
             return [0]
         }
@@ -105,7 +105,7 @@ enum FFTMultiplier {
     
     /// Convert base-2^15 digits back to BigInt using direct word construction
     /// O(n) - builds UInt words directly, then creates BigUInt via init(words:)
-    private static func digitsToMagnitude(_ digits: [Int64]) -> BigInt {
+    nonisolated private static func digitsToMagnitude(_ digits: [Int64]) -> BigInt {
         if digits.isEmpty {
             return BigInt(0)
         }
@@ -148,7 +148,7 @@ enum FFTMultiplier {
     
     // MARK: - FFT Operations (Complex FFT - standard for convolution)
     
-    private static func fftConvolve(_ a: [Double], _ b: [Double], fftSize n: Int) -> [Int64]? {
+    nonisolated private static func fftConvolve(_ a: [Double], _ b: [Double], fftSize n: Int) -> [Int64]? {
         let log2n = vDSP_Length(log2(Double(n)))
         guard (1 << log2n) == n, n >= 4 else {
             return nil
@@ -192,7 +192,7 @@ enum FFTMultiplier {
         return extractResult(cReal, count: n)
     }
     
-    private static func fftSquare(_ a: [Double], fftSize n: Int) -> [Int64]? {
+    nonisolated private static func fftSquare(_ a: [Double], fftSize n: Int) -> [Int64]? {
         let log2n = vDSP_Length(log2(Double(n)))
         guard (1 << log2n) == n, n >= 4 else {
             return nil
@@ -239,7 +239,7 @@ enum FFTMultiplier {
         return extractResult(cReal, count: n)
     }
     
-    private static func extractResult(_ cReal: UnsafeMutablePointer<Double>, count n: Int) -> [Int64] {
+    nonisolated private static func extractResult(_ cReal: UnsafeMutablePointer<Double>, count n: Int) -> [Int64] {
         // Note: vDSP_fft_zipD with kFFTDirection_Inverse already scales by 1/n
         // So we don't need to scale again - using cReal[i] directly
         let baseDouble = Double(fftBase)
@@ -283,7 +283,7 @@ enum FFTMultiplier {
         return result
     }
     
-    private static func nextPowerOf2(_ n: Int) -> Int {
+    nonisolated private static func nextPowerOf2(_ n: Int) -> Int {
         var p = 1
         while p < n { p <<= 1 }
         return p

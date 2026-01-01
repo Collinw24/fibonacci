@@ -15,11 +15,17 @@ import UIKit
 #endif
 
 struct ContentView: View {
+    // With @Observable, we use @State to hold the instance, but observation happens automatically
+    // when we access properties in the body
     @State private var viewModel = FibonacciViewModel()
     @State private var buttonScale: CGFloat = 1.0
     
     // Force observation by accessing viewModel properties in body
     // This ensures @Observable changes trigger view updates
+    private var observedState: FibonacciViewModel.State { viewModel.state }
+    private var observedCurrentN: UInt64 { viewModel.currentN }
+    private var observedCurrentTimeMs: Double { viewModel.currentTimeMs }
+    private var observedGraphDataCount: Int { viewModel.graphData.count }
     
     var body: some View {
         ZStack {
@@ -29,6 +35,7 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     Spacer().frame(height: 50)
                     
+                    // Access viewModel.state directly to ensure observation
                     switch viewModel.state {
                     case .idle:
                         idleView
@@ -84,11 +91,11 @@ struct ContentView: View {
             // Algorithm info
             GlassCard {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("ℤ[√5] ring + fft")
+                    Text("ℤ√5 ring + fft")
                         .font(.headline)
                         .foregroundStyle(.white)
                     
-                    Text("one-shot o(log n) powering from base (1,1) with in-loop time checks")
+                    Text("one shot o(log n) powering from base f(1,1)")
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.55))
                         .lineSpacing(2)
@@ -151,22 +158,18 @@ struct ContentView: View {
     
     private var runningView: some View {
         VStack(spacing: 28) {
-            // Progress ring
-            ZStack {
-                Circle()
-                    .stroke(.white.opacity(0.08), lineWidth: 5)
-                    .frame(width: 90, height: 90)
-                
-                Circle()
-                    .trim(from: 0, to: min(viewModel.currentTimeMs / 1000.0, 1.0))
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .frame(width: 90, height: 90)
-                    .rotationEffect(.degrees(-90))
-                
-                Text("\(Int(viewModel.currentTimeMs))")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
+            // Current time display
+            GlassCard {
+                VStack(spacing: 6) {
+                    Text("current time")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.45))
+                    
+                    Text("\(String(format: "%.3f", viewModel.currentTimeMs))ms")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                }
             }
             
             // Current n
@@ -183,6 +186,10 @@ struct ContentView: View {
                 }
             }
             
+            // Fibonacci number feed
+            fibonacciFeedView
+            
+            // Real chart with optimizations
             if !viewModel.graphData.isEmpty {
                 graphCard
             }
@@ -267,6 +274,35 @@ struct ContentView: View {
         }
     }
     
+    // MARK: - Fibonacci Feed
+    
+    private var fibonacciFeedView: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("current fibonacci")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.white.opacity(0.8))
+                
+                ScrollView(.vertical, showsIndicators: false) {
+                    if viewModel.currentFibonacci == 0 {
+                        Text("computing...")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text(viewModel.currentFibonacci.description)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                }
+                .frame(maxHeight: 120)
+            }
+        }
+    }
+    
     // MARK: - Graph
     
     private var graphCard: some View {
@@ -286,6 +322,22 @@ struct ContentView: View {
                 }
                 
                 if !viewModel.graphData.isEmpty {
+                    // Calculate domain from graph data AND current values to prevent cutoff
+                    let nValues = viewModel.graphData.map { Double($0.n) }
+                    let timeValues = viewModel.graphData.map { $0.timeMs }
+                    
+                    // Include current max values to ensure domain always covers latest data
+                    let minN = max(1.0, nValues.min() ?? 1.0) // Ensure >= 1 for log scale
+                    let maxNFromGraph = nValues.max() ?? 1.0
+                    let currentN = Double(viewModel.currentN)
+                    let maxN = max(maxNFromGraph, currentN) // Use whichever is larger
+                    
+                    // Use fixed minimum for Y-axis to prevent bottom cutoff when early fast iterations get sampled out
+                    let minTime = 0.001 // Fixed minimum for log scale stability
+                    let maxTimeFromGraph = timeValues.max() ?? 1.0
+                    let currentTime = viewModel.currentTimeMs
+                    let maxTime = max(maxTimeFromGraph, currentTime) // Use whichever is larger
+                    
                     Chart(viewModel.graphData) { point in
                         LineMark(
                             x: .value("n", point.n),
@@ -293,9 +345,16 @@ struct ContentView: View {
                         )
                         .foregroundStyle(Color.accentColor)
                     }
-                    .chartXScale(type: .log)
-                    .chartYScale(type: .log)
+                    .chartXScale(
+                        domain: minN...maxN,
+                        type: .log
+                    )
+                    .chartYScale(
+                        domain: minTime...maxTime,
+                        type: .log
+                    )
                     .frame(height: 220)
+                    .animation(.linear(duration: 0.1), value: viewModel.graphData.count)
                 } else {
                     Rectangle()
                         .fill(.clear)
