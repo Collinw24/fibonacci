@@ -55,17 +55,21 @@ final class FibonacciViewModel {
     @ObservationIgnored nonisolated(unsafe) private var _latestTimeMs: Double = 0.0
     @ObservationIgnored nonisolated(unsafe) private var _latestTotalElapsed: Double = 0.0
     @ObservationIgnored nonisolated(unsafe) private var _latestFib: BigInt = BigInt(0)
+    @ObservationIgnored nonisolated(unsafe) private var _latestBitWidth: Int = 0
     // Store raw computation data for graph generation (separate from computation loop)
     @ObservationIgnored nonisolated(unsafe) private var _computationHistory: [(n: UInt64, timeMs: Double, timestamp: Double)] = []
     
     // Direct property access - these are simple values, atomic reads/writes are safe
     // We use simple assignment (non-atomic but fast) - small risk of partial reads but acceptable for UI updates
     nonisolated private func updateLatestValues(n: UInt64, timeMs: Double, totalElapsed: Double, fib: BigInt) {
-        // Direct assignment - no barrier needed for simple values
         _latestN = n
         _latestTimeMs = timeMs
         _latestTotalElapsed = totalElapsed
-        _latestFib = fib
+        _latestBitWidth = fib.magnitude.bitWidth
+        // Only store BigInt reference every 100 iterations to reduce copy overhead
+        if n % 100 == 0 || n < 100 {
+            _latestFib = fib
+        }
     }
     
     // Batch storage to avoid flooding the queue
@@ -75,10 +79,14 @@ final class FibonacciViewModel {
     // Counter for graph update throttling
     @ObservationIgnored nonisolated(unsafe) private var _updateCounter: Int = 0
     
-    // Store computation result for graph generation (frequent writes for smooth updates)
+    // Store computation result for graph generation (adaptive frequency)
     nonisolated private func storeComputationResult(n: UInt64, timeMs: Double, totalElapsed: Double) {
-        // Store every result for first 1000, then every 5th for smooth graph
-        if n <= 1000 || n % 5 == 0 {
+        // Adaptive storage: dense early, sparse later
+        let shouldStore = n <= 1000 ||
+                         (n <= 10_000 && n % 10 == 0) ||
+                         (n <= 100_000 && n % 100 == 0) ||
+                         (n % 1000 == 0)
+        if shouldStore {
             updateQueue.async(flags: .barrier) {
                 self._computationHistory.append((n: n, timeMs: timeMs, timestamp: totalElapsed))
                 // Keep history manageable but preserve early data
@@ -214,39 +222,53 @@ final class FibonacciViewModel {
         _latestTimeMs = 0.0
         _latestTotalElapsed = 0.0
         _latestFib = BigInt(0)
+        _latestBitWidth = 0
+        _lastDisplayedN = 0
         _historyWriteCounter = 0
         clearComputationHistory()
     }
     
-    // MARK: - UI Update Timer
-    
+    // MARK: - UI Update Timer (120Hz for ProMotion smoothness)
+
     private func startUIUpdateTimer() {
         stopUIUpdateTimer()
-        
-        // Update UI every 100ms (10 updates per second) - smooth and responsive
+
+        // Update UI at 120Hz (~8.3ms) for ProMotion displays
+        // This gives buttery smooth number updates during fast iterations
         _updateCounter = 0
-        updateCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
+        _lastDisplayedN = 0
+        updateCancellable = Timer.publish(every: 1.0/120.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self = self else { return }
-                
-                // Check if computation is still running
+
                 guard self.state == .running else {
                     self.updateCancellable?.cancel()
                     self.updateCancellable = nil
                     return
                 }
-                
-                self._updateCounter += 1
-                
-                // Always update these — fast and smooth
-                self.currentN = self._latestN
+
+                let latestN = self._latestN
+
+                // Skip update if n hasn't changed (avoids redundant UI work)
+                guard latestN != self._lastDisplayedN else { return }
+                self._lastDisplayedN = latestN
+
+                // Update lightweight values only (no BigInt copy)
+                self.currentN = latestN
                 self.currentTimeMs = self._latestTimeMs
                 self.totalElapsedMs = self._latestTotalElapsed
-                self.currentFibonacci = self._latestFib
-                
-                // Update graph every 5th fire (~500ms) for smooth curve growth
-                if self._updateCounter % 5 == 0 {
+
+                self._updateCounter += 1
+
+                // Update BigInt display every 120 frames (~1s) to reduce copy overhead
+                // The BigInt is only stored every 100 iterations anyway
+                if self._updateCounter % 120 == 0 {
+                    self.currentFibonacci = self._latestFib
+                }
+
+                // Update graph every 240 frames (~2s)
+                if self._updateCounter % 240 == 0 {
                     Task { @MainActor [weak self] in
                         guard let self = self else { return }
                         let history = await self.getComputationHistoryForGraph()
@@ -261,6 +283,8 @@ final class FibonacciViewModel {
                 }
             }
     }
+
+    @ObservationIgnored private var _lastDisplayedN: UInt64 = 0
     
     private func stopUIUpdateTimer() {
         updateCancellable?.cancel()

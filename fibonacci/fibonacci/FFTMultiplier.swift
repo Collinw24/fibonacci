@@ -2,287 +2,259 @@
 //  FFTMultiplier.swift
 //  fibonacci
 //
-//  Optimized FFT multiplication using Accelerate/vDSP
-//  Direct BigInt magnitude conversion, vectorized operations
+//  High-performance FFT multiplication using Accelerate/vDSP
+//  O(n log n) multiplication with O(n) digit conversion
 //
 
 import Foundation
 import Accelerate
 import BigInt
 
-/// FFT-based multiplication for BigInt operations
 enum FFTMultiplier {
-    
-    nonisolated private static let maxFFTSize = 1 << 24
-    
-    /// Base for FFT digits: 2^15 = 32768
-    nonisolated private static let fftBase: Int64 = 32768
-    nonisolated private static let fftBaseBits: Int = 15
-    
+
+    nonisolated(unsafe) private static let maxFFTSize = 1 << 24
+    nonisolated(unsafe) private static let fftBase: Int64 = 32768
+    nonisolated(unsafe) private static let fftBaseBits: Int = 15
+    nonisolated(unsafe) private static let fftBaseMask: UInt64 = 32767
+
     // MARK: - Public Interface
-    
+
     nonisolated static func multiply(_ a: BigInt, _ b: BigInt) -> BigInt {
+        if a == 0 || b == 0 { return BigInt(0) }
+
         let aMag = a.magnitude
         let bMag = b.magnitude
         let combinedBits = aMag.bitWidth + bMag.bitWidth
-        
-        if a == 0 || b == 0 {
-            return BigInt(0)
-        }
-        
-        // Dynamic: use FFT if combined bit width > 192
-        if combinedBits < 192 {
+
+        if combinedBits < 3000 {
             return a * b
         }
-        
+
         let aDigits = magnitudeToDigits(aMag)
         let bDigits = magnitudeToDigits(bMag)
-        
-        let n = nextPowerOf2(2 * max(aDigits.count, bDigits.count))
-        
+
+        let n = nextPowerOf2(aDigits.count + bDigits.count)
+
         if n > maxFFTSize {
             return a * b
         }
-        
+
         guard let resultDigits = fftConvolve(aDigits, bDigits, fftSize: n) else {
             return a * b
         }
-        
+
         var result = digitsToMagnitude(resultDigits)
         if (a < 0) != (b < 0) { result = -result }
-        
+
         return result
     }
-    
+
     nonisolated static func square(_ a: BigInt) -> BigInt {
+        if a == 0 { return BigInt(0) }
+
         let aMag = a.magnitude
-        
-        if a == 0 {
-            return BigInt(0)
-        }
-        
-        if aMag.bitWidth < 96 {
+
+        if aMag.bitWidth < 1500 {
             return a * a
         }
-        
+
         let aDigits = magnitudeToDigits(aMag)
         let n = nextPowerOf2(2 * aDigits.count)
-        
+
         if n > maxFFTSize {
             return a * a
         }
-        
+
         guard let resultDigits = fftSquare(aDigits, fftSize: n) else {
             return a * a
         }
-        
+
         return digitsToMagnitude(resultDigits)
     }
-    
-    // MARK: - Direct BigInt Magnitude Conversion (O(n) using word access)
-    
-    /// Convert BigInt magnitude to base-2^15 digits using BigUInt division
-    /// O(n) - uses BigUInt modulo and division operations (safe, no shift truncation issues)
-    nonisolated private static func magnitudeToDigits(_ mag: BigInt.Magnitude) -> [Double] {
-        if mag == 0 {
-            return [0]
+
+    // MARK: - O(n) Digit Conversion via Bit Manipulation
+
+    nonisolated private static func magnitudeToDigits(_ mag: BigUInt) -> [Double] {
+        if mag == 0 { return [0] }
+
+        let words = mag.words
+        let totalBits = mag.bitWidth
+        let digitCount = (totalBits + fftBaseBits - 1) / fftBaseBits
+
+        var digits = [Double]()
+        digits.reserveCapacity(digitCount)
+
+        var bitPosition = 0
+        var wordIndex = 0
+        var currentWord: UInt64 = words.count > 0 ? UInt64(words[0]) : 0
+        var bitsRemainingInWord = 64
+
+        while bitPosition < totalBits {
+            var digit: UInt64 = 0
+            var bitsNeeded = fftBaseBits
+            var bitsCollected = 0
+
+            while bitsNeeded > 0 && wordIndex < words.count {
+                if bitsRemainingInWord == 0 {
+                    wordIndex += 1
+                    if wordIndex < words.count {
+                        currentWord = UInt64(words[wordIndex])
+                        bitsRemainingInWord = 64
+                    } else {
+                        break
+                    }
+                }
+
+                let bitsToTake = min(bitsNeeded, bitsRemainingInWord)
+                let mask = (UInt64(1) << bitsToTake) - 1
+                let bits = currentWord & mask
+
+                digit |= bits << bitsCollected
+
+                currentWord >>= bitsToTake
+                bitsRemainingInWord -= bitsToTake
+                bitsNeeded -= bitsToTake
+                bitsCollected += bitsToTake
+            }
+
+            digits.append(Double(digit & fftBaseMask))
+            bitPosition += fftBaseBits
         }
-        
-        var value = mag
-        var digits: [Double] = []
-        let estimatedCount = (value.bitWidth + fftBaseBits - 1) / fftBaseBits
-        digits.reserveCapacity(estimatedCount)
-        let base = BigUInt(fftBase)
-        
-        while value > 0 {
-            let remainder = value % base
-            digits.append(Double(remainder))
-            value /= base
-        }
-        
-        return digits.isEmpty ? [0] : digits
+
+        return digits
     }
-    
-    /// Convert base-2^15 digits back to BigInt using direct word construction
-    /// O(n) - builds UInt words directly, then creates BigUInt via init(words:)
+
     nonisolated private static func digitsToMagnitude(_ digits: [Int64]) -> BigInt {
-        if digits.isEmpty {
-            return BigInt(0)
-        }
-        
-        // Build UInt words from digits using bit manipulation
+        if digits.isEmpty { return BigInt(0) }
+
         var words: [UInt] = []
-        words.reserveCapacity((digits.count * fftBaseBits + 63) / 64)
-        
-        var bitAccumulator: UInt = 0
-        var bitsInAccumulator: Int = 0
-        
-        // Process digits from least significant to most
+        let estimatedWords = (digits.count * fftBaseBits + 63) / 64
+        words.reserveCapacity(estimatedWords)
+
+        var accumulator: UInt = 0
+        var bitsInAccumulator = 0
+
         for digit in digits {
-            // Add digit to accumulator (digits are positive, safe to convert to UInt)
-            bitAccumulator |= UInt(truncatingIfNeeded: digit) << bitsInAccumulator
+            let d = UInt(bitPattern: Int(digit))
+            accumulator |= d << bitsInAccumulator
             bitsInAccumulator += fftBaseBits
-            
-            // Extract complete 64-bit words (UInt is 64-bit on Apple Silicon)
+
             while bitsInAccumulator >= 64 {
-                words.append(bitAccumulator)
-                bitAccumulator >>= 64
+                words.append(accumulator)
+                accumulator = d >> (fftBaseBits - (bitsInAccumulator - 64))
                 bitsInAccumulator -= 64
             }
         }
-        
-        // Handle remaining bits
+
         if bitsInAccumulator > 0 || words.isEmpty {
-            words.append(bitAccumulator)
+            words.append(accumulator)
         }
-        
-        // Remove trailing zero words (optimization)
+
         while words.count > 1 && words.last == 0 {
             words.removeLast()
         }
-        
-        // Create BigUInt directly from words array (O(1) - direct construction)
-        let bigUInt = BigUInt(words: words)
-        return BigInt(sign: .plus, magnitude: bigUInt)
+
+        return BigInt(sign: .plus, magnitude: BigUInt(words: words))
     }
-    
-    // MARK: - FFT Operations (Complex FFT - standard for convolution)
-    
+
+    // MARK: - FFT Operations
+
     nonisolated private static func fftConvolve(_ a: [Double], _ b: [Double], fftSize n: Int) -> [Int64]? {
         let log2n = vDSP_Length(log2(Double(n)))
-        guard (1 << log2n) == n, n >= 4 else {
-            return nil
-        }
-        
-        guard let fftSetup = vDSP_create_fftsetupD(log2n, FFTRadix(kFFTRadix2)) else {
-            return nil
-        }
+        guard (1 << log2n) == n, n >= 4 else { return nil }
+
+        guard let fftSetup = vDSP_create_fftsetupD(log2n, FFTRadix(kFFTRadix2)) else { return nil }
         defer { vDSP_destroy_fftsetupD(fftSetup) }
-        
-        let aReal = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let aImag = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let bReal = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let bImag = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let cReal = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let cImag = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        
-        defer {
-            aReal.deallocate(); aImag.deallocate()
-            bReal.deallocate(); bImag.deallocate()
-            cReal.deallocate(); cImag.deallocate()
-        }
-        
-        aReal.initialize(repeating: 0, count: n)
-        aImag.initialize(repeating: 0, count: n)
-        bReal.initialize(repeating: 0, count: n)
-        bImag.initialize(repeating: 0, count: n)
-        
+
+        var aReal = [Double](repeating: 0, count: n)
+        var aImag = [Double](repeating: 0, count: n)
+        var bReal = [Double](repeating: 0, count: n)
+        var bImag = [Double](repeating: 0, count: n)
+        var cReal = [Double](repeating: 0, count: n)
+        var cImag = [Double](repeating: 0, count: n)
+
         for i in 0..<a.count { aReal[i] = a[i] }
         for i in 0..<b.count { bReal[i] = b[i] }
-        
-        var aSplit = DSPDoubleSplitComplex(realp: aReal, imagp: aImag)
-        var bSplit = DSPDoubleSplitComplex(realp: bReal, imagp: bImag)
-        var cSplit = DSPDoubleSplitComplex(realp: cReal, imagp: cImag)
-        
+
+        var aSplit = DSPDoubleSplitComplex(realp: &aReal, imagp: &aImag)
+        var bSplit = DSPDoubleSplitComplex(realp: &bReal, imagp: &bImag)
+        var cSplit = DSPDoubleSplitComplex(realp: &cReal, imagp: &cImag)
+
         vDSP_fft_zipD(fftSetup, &aSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
         vDSP_fft_zipD(fftSetup, &bSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
         vDSP_zvmulD(&aSplit, 1, &bSplit, 1, &cSplit, 1, vDSP_Length(n), 1)
         vDSP_fft_zipD(fftSetup, &cSplit, 1, log2n, FFTDirection(kFFTDirection_Inverse))
-        
+
+        var scale = 1.0 / Double(n)
+        vDSP_vsmulD(cReal, 1, &scale, &cReal, 1, vDSP_Length(n))
+
         return extractResult(cReal, count: n)
     }
-    
+
     nonisolated private static func fftSquare(_ a: [Double], fftSize n: Int) -> [Int64]? {
         let log2n = vDSP_Length(log2(Double(n)))
-        guard (1 << log2n) == n, n >= 4 else {
-            return nil
-        }
-        
-        guard let fftSetup = vDSP_create_fftsetupD(log2n, FFTRadix(kFFTRadix2)) else {
-            return nil
-        }
+        guard (1 << log2n) == n, n >= 4 else { return nil }
+
+        guard let fftSetup = vDSP_create_fftsetupD(log2n, FFTRadix(kFFTRadix2)) else { return nil }
         defer { vDSP_destroy_fftsetupD(fftSetup) }
-        
-        let aReal = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let aImag = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let cReal = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let cImag = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        let temp = UnsafeMutablePointer<Double>.allocate(capacity: n)
-        
-        defer {
-            aReal.deallocate(); aImag.deallocate()
-            cReal.deallocate(); cImag.deallocate()
-            temp.deallocate()
-        }
-        
-        aReal.initialize(repeating: 0, count: n)
-        aImag.initialize(repeating: 0, count: n)
-        
+
+        var aReal = [Double](repeating: 0, count: n)
+        var aImag = [Double](repeating: 0, count: n)
+        var cReal = [Double](repeating: 0, count: n)
+        var cImag = [Double](repeating: 0, count: n)
+
         for i in 0..<a.count { aReal[i] = a[i] }
-        
-        var aSplit = DSPDoubleSplitComplex(realp: aReal, imagp: aImag)
-        var cSplit = DSPDoubleSplitComplex(realp: cReal, imagp: cImag)
-        
+
+        var aSplit = DSPDoubleSplitComplex(realp: &aReal, imagp: &aImag)
+        var cSplit = DSPDoubleSplitComplex(realp: &cReal, imagp: &cImag)
+
         vDSP_fft_zipD(fftSetup, &aSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
-        
-        // Vectorized complex square: (ar + ai*i)² = (ar² - ai²) + 2*ar*ai*i
-        vDSP_vmulD(aReal, 1, aReal, 1, cReal, 1, vDSP_Length(n))      // ar²
-        vDSP_vmulD(aImag, 1, aImag, 1, temp, 1, vDSP_Length(n))       // ai²
-        vDSP_vsubD(temp, 1, cReal, 1, cReal, 1, vDSP_Length(n))       // ar² - ai²
-        
-        vDSP_vmulD(aReal, 1, aImag, 1, cImag, 1, vDSP_Length(n))      // ar*ai
-        var two: Double = 2.0
-        vDSP_vsmulD(cImag, 1, &two, cImag, 1, vDSP_Length(n))         // 2*ar*ai
-        
+
+        // Complex square: (a + bi)² = (a² - b²) + 2abi
+        for i in 0..<n {
+            cReal[i] = aReal[i] * aReal[i] - aImag[i] * aImag[i]
+            cImag[i] = 2.0 * aReal[i] * aImag[i]
+        }
+
         vDSP_fft_zipD(fftSetup, &cSplit, 1, log2n, FFTDirection(kFFTDirection_Inverse))
-        
+
+        var scale = 1.0 / Double(n)
+        vDSP_vsmulD(cReal, 1, &scale, &cReal, 1, vDSP_Length(n))
+
         return extractResult(cReal, count: n)
     }
-    
-    nonisolated private static func extractResult(_ cReal: UnsafeMutablePointer<Double>, count n: Int) -> [Int64] {
-        // Note: vDSP_fft_zipD with kFFTDirection_Inverse already scales by 1/n
-        // So we don't need to scale again - using cReal[i] directly
+
+    nonisolated private static func extractResult(_ cReal: [Double], count n: Int) -> [Int64] {
         let baseDouble = Double(fftBase)
-        var result = [Int64](repeating: 0, count: n + 32)  // Extra space for carries
-        var carry: Double = 0.0  // Use Double for carry to handle large intermediate values
+        var result = [Int64](repeating: 0, count: n + 64)
+        var carry: Double = 0.0
+
         for i in 0..<n {
-            // Add carry (no extra scaling - inverse FFT already did 1/n)
             let totalValue = cReal[i] + carry
             let roundedValue = round(totalValue)
-            
-            // Use proper modulo arithmetic (much faster than while loop)
-            // For positive values: digit = roundedValue - floor(roundedValue / baseDouble) * baseDouble
-            let quotient = roundedValue / baseDouble
-            let digitDouble = roundedValue - floor(quotient) * baseDouble
-            
-            // Ensure digit is in [0, baseDouble) range (handle any floating point errors)
-            let clampedDigit = max(0.0, min(baseDouble - 1.0, digitDouble))
-            
-            // Extract digit (should be in [0, baseDouble))
-            result[i] = Int64(clampedDigit)
-            
-            // Calculate carry: integer part of (roundedValue / baseDouble)
-            carry = floor(quotient)
+
+            let quotient = floor(roundedValue / baseDouble)
+            let digit = roundedValue - quotient * baseDouble
+
+            result[i] = Int64(max(0, min(baseDouble - 1, digit)))
+            carry = quotient
         }
-        
-        // Propagate remaining carry (process in chunks if very large)
+
         var idx = n
         while carry >= 0.5 && idx < result.count {
-            let carryInt = min(Int64(carry), Int64.max)
-            let value = result[idx] + carryInt
-            result[idx] = value % fftBase
-            carry = Double(value / fftBase)
+            let value = Double(result[idx]) + carry
+            result[idx] = Int64(value.truncatingRemainder(dividingBy: baseDouble))
+            carry = floor(value / baseDouble)
             idx += 1
         }
-        
-        // Remove trailing zeros
+
         while result.count > 1 && result.last == 0 {
             result.removeLast()
         }
-        
+
         return result
     }
-    
+
     nonisolated private static func nextPowerOf2(_ n: Int) -> Int {
         var p = 1
         while p < n { p <<= 1 }
