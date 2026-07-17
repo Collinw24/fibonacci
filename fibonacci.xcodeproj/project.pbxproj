@@ -6,10 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F088D1C02F1BF3A700AA9A08 /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = F055A7AD2EF51E2D006B065C /* BigInt */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		F055A79E2EF51E2C006B065C /* fibonacci.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = fibonacci.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F055A7AC2EF51E2D006B065C /* XCRemoteSwiftPackageReference "BigInt" */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/leif-ibsen/BigInt.git"; requirement = {kind = upToNextMajorVersion; minimumVersion = 1.0.0; }; };
-		F055A7AD2EF51E2D006B065C /* BigInt */ = {isa = XCSwiftPackageProductDependency; package = F055A7AC2EF51E2D006B065C /* XCRemoteSwiftPackageReference "BigInt" */; productName = BigInt; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -25,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F088D1C02F1BF3A700AA9A08 /* BigInt in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -263,6 +266,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HVMN3TTR27;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -296,6 +300,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HVMN3TTR27;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -348,10 +353,10 @@
 /* Begin XCRemoteSwiftPackageReference section */
 		F055A7AC2EF51E2D006B065C /* XCRemoteSwiftPackageReference "BigInt" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/leif-ibsen/BigInt.git";
+			repositoryURL = "https://github.com/attaswift/BigInt.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
+				minimumVersion = 5.0.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
