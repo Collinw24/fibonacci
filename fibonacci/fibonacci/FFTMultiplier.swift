@@ -11,12 +11,35 @@ import Accelerate
 import BigInt
 
 enum FFTMultiplier {
+    nonisolated private final class SendableFFTSetup: @unchecked Sendable {
+        let setup: FFTSetupD
+        init(setup: FFTSetupD) {
+            self.setup = setup
+        }
+    }
 
-    nonisolated(unsafe) private static let maxFFTSize = 1 << 24
-    nonisolated(unsafe) private static let fftBase: Int64 = 32768
-    nonisolated(unsafe) private static let fftBaseBits: Int = 15
-    nonisolated(unsafe) private static let fftBaseMask: UInt64 = 32767
+    nonisolated(unsafe) private static var fftSetupCache: [vDSP_Length: SendableFFTSetup] = [:]
+    nonisolated private static let fftSetupLock = OSAllocatedUnfairLock(initialState: ())
 
+    nonisolated private static func getSetup(log2n: vDSP_Length) -> FFTSetupD? {
+        let wrap = fftSetupLock.withLock { () -> SendableFFTSetup? in
+            if let setup = fftSetupCache[log2n] {
+                return setup
+            }
+            guard let setup = vDSP_create_fftsetupD(log2n, FFTRadix(kFFTRadix2)) else {
+                return nil
+            }
+            let wrap = SendableFFTSetup(setup: setup)
+            fftSetupCache[log2n] = wrap
+            return wrap
+        }
+        return wrap?.setup
+    }
+
+    nonisolated private static let maxFFTSize = 1 << 24
+    nonisolated private static let fftBase: Int64 = 32768
+    nonisolated private static let fftBaseBits: Int = 15
+    nonisolated private static let fftBaseMask: UInt64 = 32767
     // MARK: - Public Interface
 
     nonisolated static func multiply(_ a: BigInt, _ b: BigInt) -> BigInt {
@@ -163,8 +186,7 @@ enum FFTMultiplier {
         let log2n = vDSP_Length(log2(Double(n)))
         guard (1 << log2n) == n, n >= 4 else { return nil }
 
-        guard let fftSetup = vDSP_create_fftsetupD(log2n, FFTRadix(kFFTRadix2)) else { return nil }
-        defer { vDSP_destroy_fftsetupD(fftSetup) }
+        guard let fftSetup = getSetup(log2n: log2n) else { return nil }
 
         var aReal = [Double](repeating: 0, count: n)
         var aImag = [Double](repeating: 0, count: n)
@@ -176,17 +198,29 @@ enum FFTMultiplier {
         for i in 0..<a.count { aReal[i] = a[i] }
         for i in 0..<b.count { bReal[i] = b[i] }
 
-        var aSplit = DSPDoubleSplitComplex(realp: &aReal, imagp: &aImag)
-        var bSplit = DSPDoubleSplitComplex(realp: &bReal, imagp: &bImag)
-        var cSplit = DSPDoubleSplitComplex(realp: &cReal, imagp: &cImag)
+        aReal.withUnsafeMutableBufferPointer { aRealBuf in
+            aImag.withUnsafeMutableBufferPointer { aImagBuf in
+                bReal.withUnsafeMutableBufferPointer { bRealBuf in
+                    bImag.withUnsafeMutableBufferPointer { bImagBuf in
+                        cReal.withUnsafeMutableBufferPointer { cRealBuf in
+                            cImag.withUnsafeMutableBufferPointer { cImagBuf in
+                                var aSplit = DSPDoubleSplitComplex(realp: aRealBuf.baseAddress!, imagp: aImagBuf.baseAddress!)
+                                var bSplit = DSPDoubleSplitComplex(realp: bRealBuf.baseAddress!, imagp: bImagBuf.baseAddress!)
+                                var cSplit = DSPDoubleSplitComplex(realp: cRealBuf.baseAddress!, imagp: cImagBuf.baseAddress!)
 
-        vDSP_fft_zipD(fftSetup, &aSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
-        vDSP_fft_zipD(fftSetup, &bSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
-        vDSP_zvmulD(&aSplit, 1, &bSplit, 1, &cSplit, 1, vDSP_Length(n), 1)
-        vDSP_fft_zipD(fftSetup, &cSplit, 1, log2n, FFTDirection(kFFTDirection_Inverse))
+                                vDSP_fft_zipD(fftSetup, &aSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
+                                vDSP_fft_zipD(fftSetup, &bSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
+                                vDSP_zvmulD(&aSplit, 1, &bSplit, 1, &cSplit, 1, vDSP_Length(n), 1)
+                                vDSP_fft_zipD(fftSetup, &cSplit, 1, log2n, FFTDirection(kFFTDirection_Inverse))
 
-        var scale = 1.0 / Double(n)
-        vDSP_vsmulD(cReal, 1, &scale, &cReal, 1, vDSP_Length(n))
+                                var scale = 1.0 / Double(n)
+                                vDSP_vsmulD(cRealBuf.baseAddress!, 1, &scale, cRealBuf.baseAddress!, 1, vDSP_Length(n))
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         return extractResult(cReal, count: n)
     }
@@ -195,8 +229,7 @@ enum FFTMultiplier {
         let log2n = vDSP_Length(log2(Double(n)))
         guard (1 << log2n) == n, n >= 4 else { return nil }
 
-        guard let fftSetup = vDSP_create_fftsetupD(log2n, FFTRadix(kFFTRadix2)) else { return nil }
-        defer { vDSP_destroy_fftsetupD(fftSetup) }
+        guard let fftSetup = getSetup(log2n: log2n) else { return nil }
 
         var aReal = [Double](repeating: 0, count: n)
         var aImag = [Double](repeating: 0, count: n)
@@ -205,21 +238,25 @@ enum FFTMultiplier {
 
         for i in 0..<a.count { aReal[i] = a[i] }
 
-        var aSplit = DSPDoubleSplitComplex(realp: &aReal, imagp: &aImag)
-        var cSplit = DSPDoubleSplitComplex(realp: &cReal, imagp: &cImag)
+        aReal.withUnsafeMutableBufferPointer { aRealBuf in
+            aImag.withUnsafeMutableBufferPointer { aImagBuf in
+                cReal.withUnsafeMutableBufferPointer { cRealBuf in
+                    cImag.withUnsafeMutableBufferPointer { cImagBuf in
+                        var aSplit = DSPDoubleSplitComplex(realp: aRealBuf.baseAddress!, imagp: aImagBuf.baseAddress!)
+                        var cSplit = DSPDoubleSplitComplex(realp: cRealBuf.baseAddress!, imagp: cImagBuf.baseAddress!)
 
-        vDSP_fft_zipD(fftSetup, &aSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
+                        vDSP_fft_zipD(fftSetup, &aSplit, 1, log2n, FFTDirection(kFFTDirection_Forward))
 
-        // Complex square: (a + bi)² = (a² - b²) + 2abi
-        for i in 0..<n {
-            cReal[i] = aReal[i] * aReal[i] - aImag[i] * aImag[i]
-            cImag[i] = 2.0 * aReal[i] * aImag[i]
+                        vDSP_zvmulD(&aSplit, 1, &aSplit, 1, &cSplit, 1, vDSP_Length(n), 1)
+
+                        vDSP_fft_zipD(fftSetup, &cSplit, 1, log2n, FFTDirection(kFFTDirection_Inverse))
+
+                        var scale = 1.0 / Double(n)
+                        vDSP_vsmulD(cRealBuf.baseAddress!, 1, &scale, cRealBuf.baseAddress!, 1, vDSP_Length(n))
+                    }
+                }
+            }
         }
-
-        vDSP_fft_zipD(fftSetup, &cSplit, 1, log2n, FFTDirection(kFFTDirection_Inverse))
-
-        var scale = 1.0 / Double(n)
-        vDSP_vsmulD(cReal, 1, &scale, &cReal, 1, vDSP_Length(n))
 
         return extractResult(cReal, count: n)
     }
