@@ -56,12 +56,12 @@ Binary exponentiation reduces the control path to $\Theta(\log n)$ ring steps. T
 
 ```mermaid
 flowchart LR
-    N["candidate n"] --> P["binary exponentiation<br/>Θ(log n) ring steps"]
+    N["candidate n"] --> P["binary exponentiation — Θ(log n) ring steps"]
     P --> R["large-integer product"]
     R --> S{"selected path"}
     S -->|"below threshold"| B["BigInt"]
-    S -->|"Auto / vDSP"| V["Accelerate · vDSP<br/>Double FFT"]
-    S -->|"explicit MPS"| M["MPSGraph<br/>Float32 FFT"]
+    S -->|"Auto / vDSP"| V["Accelerate · vDSP — Double FFT"]
+    S -->|"explicit MPS"| M["MPSGraph — Float32 FFT"]
     M --> MC{"residue matches?"}
     MC -->|"yes"| A["reconstructed integer"]
     MC -->|"no"| V
@@ -111,6 +111,53 @@ The arithmetic runs in a detached user-initiated task. `OSAllocatedUnfairLock` p
 
 These are algorithmic claims, not elapsed-time predictions. Real crossover points depend on operand size, radix, transform setup reuse, memory behavior, thermal state, build configuration, and the selected device.
 
+## Measured on an M3 Max
+
+This example run was captured on **2026-07-22 at 03:25 UTC** from an Apple M3 Max with 48 GiB of memory, running macOS 27.0 (`26A5378n`). The executable was built in Release for arm64 and used the current Automatic policy, which routes transform-eligible work through vDSP.
+
+**Headline result:** the same process produced the exact **44,920,000th Fibonacci number**—an integer with **9,387,725 decimal digits**—in a **997.481 ms median**. That is an output-size-normalized rate of **9.41 million decimal digits per second**, without recurrence caching or reuse from a neighboring Fibonacci value.
+
+| Index | Decimal digits | Median | Minimum | Maximum |
+|---:|---:|---:|---:|---:|
+| `F(11,230,000)` | 2,346,931 | 236.880 ms | 228.310 ms | 239.155 ms |
+| `F(22,460,000)` | 4,693,863 | 474.172 ms | 468.115 ms | 489.378 ms |
+| `F(33,690,000)` | 7,040,794 | 801.495 ms | 794.403 ms | 830.187 ms |
+| **`F(44,920,000)`** | **9,387,725** | **997.481 ms** | 980.579 ms | 1,027.579 ms |
+
+The next refinement candidate, `F(44,926,553)`, crossed the boundary with a **1,005.986 ms** median. Each reported row is the median of seven steady-state computations after warm-up. Search candidates used three samples; decimal digit counts were computed outside the timed interval with the high-precision Binet digit-count identity.
+
+> [!IMPORTANT]
+> The boundary is median-defined, not a claim that every trial finishes below one second. The accepted candidate ranged from 980.579 ms to 1,027.579 ms across seven samples; the complete distribution is preserved in the raw report.
+
+### What happens inside that second
+
+For `F(44,920,000)`, the engine raises the ring element with exponent `44,919,999`. Its 26-bit binary representation has 17 set bits, so the executed schedule is exactly **25 ring squarings plus 17 ring multiplications**—42 logarithmic ring operations rather than 44.92 million recurrence steps.
+
+| Technical signal | Accepted-candidate interpretation |
+|---|---|
+| Ring schedule | 25 specialized squares + 17 general multiplies |
+| Integer product dispatches | 126 coefficient-level multiply/square operations across the 42 ring steps |
+| Transform policy | Automatic routing; transform-eligible products use Accelerate/vDSP |
+| Exactness boundary | FFT reconstruction is residue-checked, with direct `BigInt` fallback retained |
+| Timed region | `FibonacciEngine.value(at:)`, including allocation, ring arithmetic, transform work, carries, reconstruction, and any fallback |
+| Excluded work | Decimal serialization, digit counting, boundary search orchestration, and report encoding |
+| Result-size rate | 9,387,725 digits ÷ 0.997481 seconds = **9.41 million decimal digits/second** |
+
+This is the project’s central systems result: compact algebra reduces the control path to logarithmic depth, while Apple’s vectorized FFT primitives carry the million-digit arithmetic. The benchmark keeps the claim inspectable by recording every probe, all seven accepted and rejected timings, the device and OS, build mode, backend policy, and source state.
+
+Reproduce the protocol:
+
+```bash
+swift run -c release fibonacci-benchmark \
+  --target-ms 1000 \
+  --search-samples 3 \
+  --final-samples 7 \
+  --max-index 100000000 \
+  --output benchmarks/m3-max-1s.json
+```
+
+The complete environment, raw timings, search probes, and accepted/rejected boundary measurements are preserved in [`benchmarks/m3-max-1s.json`](./benchmarks/m3-max-1s.json). The harness lives in [`Sources/FibonacciBenchmark/main.swift`](./Sources/FibonacciBenchmark/main.swift).
+
 ## How to read the claims
 
 - **Derived:** $\Theta(\log n)$ ring steps and $O(d\log d)$ FFT convolution describe asymptotic work.
@@ -118,7 +165,7 @@ These are algorithmic claims, not elapsed-time predictions. Real crossover point
 - **Observed:** a one-second result belongs to one device, OS, build, mode, backend, and run.
 - **Illustrative:** `F(100) = 354224848179261915075` demonstrates the interaction model; it is not a performance result.
 
-No estimated “typical max” table is published here. Comparative results belong with a documented protocol, repeated runs, variability, and an environment-complete artifact.
+No estimated “typical max” is claimed. The measured table above is one environment-complete example run; comparative conclusions still require repeated runs across devices and controlled variability.
 
 ## Run the app
 
@@ -154,6 +201,8 @@ The same command is part of the repository’s GitHub verification workflow, alo
 | [`NTTMultiplier.swift`](./fibonacci/fibonacci/NTTMultiplier.swift) | Multi-prime NTT research implementation; present, but not wired into the active runtime path |
 | [`Package.swift`](./Package.swift) | Standalone `FibonacciCore` library and deterministic test entry point |
 | [`FibonacciCoreTests.swift`](./Tests/FibonacciCoreTests/FibonacciCoreTests.swift) | Known-value, ring, vDSP, and NTT correctness contracts |
+| [`main.swift`](./Sources/FibonacciBenchmark/main.swift) | Reproducible headless boundary search and structured benchmark reporting |
+| [`m3-max-1s.json`](./benchmarks/m3-max-1s.json) | Raw M3 Max environment, probes, examples, and boundary evidence |
 
 ## Research context
 

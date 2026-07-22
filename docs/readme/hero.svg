@@ -50,13 +50,26 @@
   </g>
 
   <g fill="none" stroke="#4bd8ff" stroke-opacity="0.34" stroke-width="2">
-    <rect x="1000" y="82" width="256" height="256" rx="4"/>
-    <rect x="1000" y="338" width="158" height="98" rx="4"/>
-    <rect x="1158" y="338" width="98" height="98" rx="4"/>
-    <rect x="1256" y="278" width="60" height="60" rx="4"/>
-    <rect x="1256" y="338" width="60" height="38" rx="4"/>
+    <rect x="1242" y="165" width="13" height="13"/>
+    <rect x="1255" y="165" width="13" height="13"/>
+    <rect x="1242" y="178" width="26" height="26"/>
+    <rect x="1203" y="165" width="39" height="39"/>
+    <rect x="1203" y="100" width="65" height="65"/>
+    <rect x="1268" y="100" width="104" height="104"/>
+    <rect x="1203" y="204" width="169" height="169"/>
+    <rect x="930" y="100" width="273" height="273"/>
   </g>
-  <path d="M1000 338 A256 256 0 0 1 1256 82 A158 158 0 0 1 1098 240 A98 98 0 0 1 1196 338 A60 60 0 0 1 1256 278 A38 38 0 0 1 1218 316" fill="none" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" filter="url(#softGlow)"/>
+  <path d="M1242 178 A13 13 0 0 1 1255 165 A13 13 0 0 1 1268 178 A26 26 0 0 1 1242 204 A39 39 0 0 1 1203 165 A65 65 0 0 1 1268 100 A104 104 0 0 1 1372 204 A169 169 0 0 1 1203 373 A273 273 0 0 1 930 100" fill="none" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" filter="url(#softGlow)"/>
+  <g fill="#87eaff" fill-opacity="0.7" stroke="#071426" stroke-width="1.5" paint-order="stroke" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-weight="650" text-anchor="middle" dominant-baseline="middle">
+    <text x="1248.5" y="171.5" font-size="9">1</text>
+    <text x="1261.5" y="171.5" font-size="9">1</text>
+    <text x="1255" y="191" font-size="10">2</text>
+    <text x="1222.5" y="184.5" font-size="11">3</text>
+    <text x="1235.5" y="132.5" font-size="12">5</text>
+    <text x="1320" y="152" font-size="14">8</text>
+    <text x="1287.5" y="288.5" font-size="16">13</text>
+    <text x="1066.5" y="236.5" font-size="18">21</text>
+  </g>
   <text x="1128" y="250" fill="#6ee6ff" fill-opacity="0.15" font-family="Georgia, serif" font-size="190" text-anchor="middle">φ</text>
   <text x="1128" y="468" fill="#72889b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" text-anchor="middle">1 · 1 · 2 · 3 · 5 · 8 · 13 · 21 · 34 · 55</text>
 

@@ -1,0 +1,456 @@
+{
+  "boundary" : {
+    "accepted" : {
+      "decimalDigits" : 9387725,
+      "index" : 44920000,
+      "maximumMilliseconds" : 1027.579041,
+      "medianMilliseconds" : 997.481417,
+      "minimumMilliseconds" : 980.579,
+      "timingsMilliseconds" : [
+        993.342709,
+        994.949,
+        999.071083,
+        1015.818708,
+        1027.579041,
+        997.481417,
+        980.579
+      ]
+    },
+    "firstRejected" : {
+      "decimalDigits" : 9389094,
+      "index" : 44926553,
+      "maximumMilliseconds" : 1022.522333,
+      "medianMilliseconds" : 1005.985791,
+      "minimumMilliseconds" : 991.365208,
+      "timingsMilliseconds" : [
+        993.694208,
+        1013.943167,
+        1016.743833,
+        1022.522333,
+        991.365208,
+        992.358834,
+        1005.985791
+      ]
+    },
+    "status" : "observedRejection"
+  },
+  "environment" : {
+    "architecture" : "arm64",
+    "buildConfiguration" : "Release",
+    "capturedAtUTC" : "2026-07-22T03:25:20Z",
+    "hardware" : "Apple M3 Max",
+    "logicalProcessorCount" : 16,
+    "operatingSystem" : "Version 27.0 (Build 26A5378n)",
+    "physicalMemoryBytes" : 51539607552,
+    "sourceRevision" : "f8a771b",
+    "workingTreeDirty" : true
+  },
+  "examples" : [
+    {
+      "decimalDigits" : 2346931,
+      "index" : 11230000,
+      "maximumMilliseconds" : 239.154875,
+      "medianMilliseconds" : 236.880334,
+      "minimumMilliseconds" : 228.309708,
+      "timingsMilliseconds" : [
+        237.308125,
+        237.340875,
+        235.470667,
+        236.880334,
+        239.154875,
+        228.309708,
+        235.519709
+      ]
+    },
+    {
+      "decimalDigits" : 4693863,
+      "index" : 22460000,
+      "maximumMilliseconds" : 489.377792,
+      "medianMilliseconds" : 474.17225,
+      "minimumMilliseconds" : 468.115292,
+      "timingsMilliseconds" : [
+        468.115292,
+        474.17225,
+        472.417625,
+        470.952917,
+        479.909625,
+        487.47625,
+        489.377792
+      ]
+    },
+    {
+      "decimalDigits" : 7040794,
+      "index" : 33690000,
+      "maximumMilliseconds" : 830.187,
+      "medianMilliseconds" : 801.494875,
+      "minimumMilliseconds" : 794.403458,
+      "timingsMilliseconds" : [
+        807.152791,
+        801.038167,
+        799.367917,
+        794.403458,
+        801.494875,
+        830.187,
+        815.896541
+      ]
+    },
+    {
+      "decimalDigits" : 9387725,
+      "index" : 44920000,
+      "maximumMilliseconds" : 1027.579041,
+      "medianMilliseconds" : 997.481417,
+      "minimumMilliseconds" : 980.579,
+      "timingsMilliseconds" : [
+        993.342709,
+        994.949,
+        999.071083,
+        1015.818708,
+        1027.579041,
+        997.481417,
+        980.579
+      ]
+    }
+  ],
+  "protocolRecord" : {
+    "backendPolicy" : "Automatic (vDSP for transform-eligible work)",
+    "digitCountMethod" : "floor(n × log10(φ) − log10(√5)) + 1 using 38-digit Decimal constants",
+    "finalSamplesPerExample" : 7,
+    "maximumIndex" : 100000000,
+    "searchResolution" : 6553,
+    "searchSamplesPerCandidate" : 3,
+    "targetMilliseconds" : 1000,
+    "warmupIndex" : 10000
+  },
+  "searchProbes" : [
+    {
+      "index" : 1000,
+      "maximumMilliseconds" : 0.081583,
+      "medianMilliseconds" : 0.078625,
+      "minimumMilliseconds" : 0.074166,
+      "timingsMilliseconds" : [
+        0.081583,
+        0.078625,
+        0.074166
+      ]
+    },
+    {
+      "index" : 2000,
+      "maximumMilliseconds" : 0.0955,
+      "medianMilliseconds" : 0.094208,
+      "minimumMilliseconds" : 0.090667,
+      "timingsMilliseconds" : [
+        0.0955,
+        0.090667,
+        0.094208
+      ]
+    },
+    {
+      "index" : 4000,
+      "maximumMilliseconds" : 0.131833,
+      "medianMilliseconds" : 0.115084,
+      "minimumMilliseconds" : 0.110208,
+      "timingsMilliseconds" : [
+        0.131833,
+        0.115084,
+        0.110208
+      ]
+    },
+    {
+      "index" : 8000,
+      "maximumMilliseconds" : 0.179625,
+      "medianMilliseconds" : 0.175166,
+      "minimumMilliseconds" : 0.171083,
+      "timingsMilliseconds" : [
+        0.179625,
+        0.175166,
+        0.171083
+      ]
+    },
+    {
+      "index" : 16000,
+      "maximumMilliseconds" : 0.343583,
+      "medianMilliseconds" : 0.297084,
+      "minimumMilliseconds" : 0.292125,
+      "timingsMilliseconds" : [
+        0.343583,
+        0.292125,
+        0.297084
+      ]
+    },
+    {
+      "index" : 32000,
+      "maximumMilliseconds" : 0.591375,
+      "medianMilliseconds" : 0.529084,
+      "minimumMilliseconds" : 0.523667,
+      "timingsMilliseconds" : [
+        0.591375,
+        0.529084,
+        0.523667
+      ]
+    },
+    {
+      "index" : 64000,
+      "maximumMilliseconds" : 1.095041,
+      "medianMilliseconds" : 0.988209,
+      "minimumMilliseconds" : 0.982916,
+      "timingsMilliseconds" : [
+        1.095041,
+        0.988209,
+        0.982916
+      ]
+    },
+    {
+      "index" : 128000,
+      "maximumMilliseconds" : 2.309209,
+      "medianMilliseconds" : 1.995542,
+      "minimumMilliseconds" : 1.894084,
+      "timingsMilliseconds" : [
+        2.309209,
+        1.995542,
+        1.894084
+      ]
+    },
+    {
+      "index" : 256000,
+      "maximumMilliseconds" : 4.327875,
+      "medianMilliseconds" : 4.219583,
+      "minimumMilliseconds" : 3.985917,
+      "timingsMilliseconds" : [
+        4.327875,
+        4.219583,
+        3.985917
+      ]
+    },
+    {
+      "index" : 512000,
+      "maximumMilliseconds" : 9.784625,
+      "medianMilliseconds" : 8.994375,
+      "minimumMilliseconds" : 8.957083,
+      "timingsMilliseconds" : [
+        9.784625,
+        8.957083,
+        8.994375
+      ]
+    },
+    {
+      "index" : 1024000,
+      "maximumMilliseconds" : 20.942875,
+      "medianMilliseconds" : 20.938042,
+      "minimumMilliseconds" : 20.203708,
+      "timingsMilliseconds" : [
+        20.938042,
+        20.203708,
+        20.942875
+      ]
+    },
+    {
+      "index" : 2048000,
+      "maximumMilliseconds" : 44.0605,
+      "medianMilliseconds" : 43.082,
+      "minimumMilliseconds" : 42.885584,
+      "timingsMilliseconds" : [
+        44.0605,
+        42.885584,
+        43.082
+      ]
+    },
+    {
+      "index" : 4096000,
+      "maximumMilliseconds" : 95.882833,
+      "medianMilliseconds" : 91.62125,
+      "minimumMilliseconds" : 90.851791,
+      "timingsMilliseconds" : [
+        95.882833,
+        90.851791,
+        91.62125
+      ]
+    },
+    {
+      "index" : 8192000,
+      "maximumMilliseconds" : 195.630833,
+      "medianMilliseconds" : 194.738958,
+      "minimumMilliseconds" : 189.105583,
+      "timingsMilliseconds" : [
+        195.630833,
+        194.738958,
+        189.105583
+      ]
+    },
+    {
+      "index" : 16384000,
+      "maximumMilliseconds" : 401.591541,
+      "medianMilliseconds" : 382.596583,
+      "minimumMilliseconds" : 379.271791,
+      "timingsMilliseconds" : [
+        401.591541,
+        379.271791,
+        382.596583
+      ]
+    },
+    {
+      "index" : 32768000,
+      "maximumMilliseconds" : 868.03225,
+      "medianMilliseconds" : 807.74425,
+      "minimumMilliseconds" : 800.717166,
+      "timingsMilliseconds" : [
+        868.03225,
+        800.717166,
+        807.74425
+      ]
+    },
+    {
+      "index" : 65536000,
+      "maximumMilliseconds" : 1756.490916,
+      "medianMilliseconds" : 1668.645458,
+      "minimumMilliseconds" : 1640.83475,
+      "timingsMilliseconds" : [
+        1756.490916,
+        1640.83475,
+        1668.645458
+      ]
+    },
+    {
+      "index" : 49152000,
+      "maximumMilliseconds" : 1355.239708,
+      "medianMilliseconds" : 1327.1094170000001,
+      "minimumMilliseconds" : 1315.361833,
+      "timingsMilliseconds" : [
+        1315.361833,
+        1327.1094170000001,
+        1355.239708
+      ]
+    },
+    {
+      "index" : 40960000,
+      "maximumMilliseconds" : 929.052916,
+      "medianMilliseconds" : 928.964375,
+      "minimumMilliseconds" : 927.742166,
+      "timingsMilliseconds" : [
+        928.964375,
+        927.742166,
+        929.052916
+      ]
+    },
+    {
+      "index" : 45056000,
+      "maximumMilliseconds" : 1014.863292,
+      "medianMilliseconds" : 1006.501417,
+      "minimumMilliseconds" : 996.847292,
+      "timingsMilliseconds" : [
+        1014.863292,
+        1006.501417,
+        996.847292
+      ]
+    },
+    {
+      "index" : 43008000,
+      "maximumMilliseconds" : 906.788709,
+      "medianMilliseconds" : 898.7945,
+      "minimumMilliseconds" : 892.309708,
+      "timingsMilliseconds" : [
+        898.7945,
+        892.309708,
+        906.788709
+      ]
+    },
+    {
+      "index" : 44032000,
+      "maximumMilliseconds" : 936.611209,
+      "medianMilliseconds" : 933.204,
+      "minimumMilliseconds" : 924.255667,
+      "timingsMilliseconds" : [
+        936.611209,
+        933.204,
+        924.255667
+      ]
+    },
+    {
+      "index" : 44544000,
+      "maximumMilliseconds" : 941.659375,
+      "medianMilliseconds" : 938.1485,
+      "minimumMilliseconds" : 914.788916,
+      "timingsMilliseconds" : [
+        914.788916,
+        938.1485,
+        941.659375
+      ]
+    },
+    {
+      "index" : 44800000,
+      "maximumMilliseconds" : 960.548083,
+      "medianMilliseconds" : 944.965084,
+      "minimumMilliseconds" : 941.590333,
+      "timingsMilliseconds" : [
+        960.548083,
+        944.965084,
+        941.590333
+      ]
+    },
+    {
+      "index" : 44928000,
+      "maximumMilliseconds" : 1008.2445,
+      "medianMilliseconds" : 1002.414083,
+      "minimumMilliseconds" : 994.145334,
+      "timingsMilliseconds" : [
+        994.145334,
+        1008.2445,
+        1002.414083
+      ]
+    },
+    {
+      "index" : 44864000,
+      "maximumMilliseconds" : 942.066209,
+      "medianMilliseconds" : 941.397042,
+      "minimumMilliseconds" : 923.40975,
+      "timingsMilliseconds" : [
+        923.40975,
+        942.066209,
+        941.397042
+      ]
+    },
+    {
+      "index" : 44896000,
+      "maximumMilliseconds" : 1009.662417,
+      "medianMilliseconds" : 998.882458,
+      "minimumMilliseconds" : 990.670125,
+      "timingsMilliseconds" : [
+        1009.662417,
+        990.670125,
+        998.882458
+      ]
+    },
+    {
+      "index" : 44912000,
+      "maximumMilliseconds" : 1014.153334,
+      "medianMilliseconds" : 993.74275,
+      "minimumMilliseconds" : 993.055584,
+      "timingsMilliseconds" : [
+        993.055584,
+        993.74275,
+        1014.153334
+      ]
+    },
+    {
+      "index" : 44920000,
+      "maximumMilliseconds" : 1014.929833,
+      "medianMilliseconds" : 992.033417,
+      "minimumMilliseconds" : 986.475708,
+      "timingsMilliseconds" : [
+        1014.929833,
+        992.033417,
+        986.475708
+      ]
+    },
+    {
+      "index" : 44924000,
+      "maximumMilliseconds" : 1009.577542,
+      "medianMilliseconds" : 1005.302334,
+      "minimumMilliseconds" : 993.806125,
+      "timingsMilliseconds" : [
+        993.806125,
+        1005.302334,
+        1009.577542
+      ]
+    }
+  ]
+}

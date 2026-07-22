@@ -10,6 +10,7 @@ let package = Package(
     ],
     products: [
         .library(name: "FibonacciCore", targets: ["FibonacciCore"]),
+        .executable(name: "fibonacci-benchmark", targets: ["FibonacciBenchmark"]),
     ],
     dependencies: [
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.7.0"),
@@ -38,6 +39,11 @@ let package = Package(
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalPerformanceShadersGraph"),
             ]
+        ),
+        .executableTarget(
+            name: "FibonacciBenchmark",
+            dependencies: ["FibonacciCore"],
+            path: "Sources/FibonacciBenchmark"
         ),
         .testTarget(
             name: "FibonacciCoreTests",
