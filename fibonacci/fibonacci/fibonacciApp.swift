@@ -1,10 +1,3 @@
-//
-//  FibonacciApp.swift
-//  fibonacci
-//
-//  Created by collin on 12/19/25.
-//
-
 import SwiftUI
 
 @main

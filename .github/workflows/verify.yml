@@ -1,0 +1,30 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test numerical core
+        run: swift test
+
+      - name: Build iOS application
+        run: >-
+          xcodebuild
+          -project fibonacci.xcodeproj
+          -scheme fibonacci
+          -configuration Release
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build

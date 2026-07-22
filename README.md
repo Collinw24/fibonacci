@@ -1,331 +1,166 @@
-# fibonacci
+<p align="center">
+  <img src="./docs/readme/hero.svg" width="100%" alt="Fibonacci at the edge of a second — exact integer arithmetic across ring algebra, Accelerate, and Metal">
+</p>
 
-find the largest f(n) in exactly 1 second using o(log n) ring exponentiation with fft acceleration.
+<p align="center">
+  <strong>A native iOS and macOS research app for exact Fibonacci computation.</strong><br>
+  Logarithmic ring exponentiation, hardware-aware large-integer multiplication, and a live computation profile—built to make the mathematics inspectable.
+</p>
 
-## overview
+<p align="center">
+  <a href="https://luxiumservices.com/projects/fibonacci"><strong>Project context</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://luxiumservices.com/blog/fibonacci-computation-swift"><strong>Technical field note</strong></a>
+</p>
 
-this app computes fibonacci numbers sequentially (f(1), f(2), f(3), ...) using ultra-fast o(log n) ℤ[√5] ring exponentiation, stopping when a single computation takes ≥ 1000ms. the goal is to find the highest possible n where f(n) can be computed within that time budget.
+<p align="center">
+  <code>SwiftUI</code> · <code>BigInt</code> · <code>Accelerate / vDSP</code> · <code>MPSGraph</code> · <code>Swift Charts</code>
+</p>
 
-each f(n) is computed from scratch using binary exponentiation in the ℤ[√5] ring, accelerated with fft-based multiplication for large numbers. the result is a real-time graph showing how computation time grows exponentially as n increases.
+> [!NOTE]
+> The one-second boundary is an observation from the current run on the current device. This is a research instrument—not a universal score, a cross-device leaderboard, or a published hardware benchmark.
 
-## how it works
+---
 
-1. press **run f(n)** to start the computation
-2. the app computes f(1), f(2), f(3), ... sequentially, each from scratch
-3. each computation uses o(log n) ring exponentiation (fast binary powering)
-4. computation time is measured for each f(n)
-5. when a single computation takes ≥ 1000ms, the loop stops
-6. the last successfully computed f(n) is displayed as the result
-7. a real-time graph shows computation time vs n (logarithmic axes)
+## The experiment
 
-## the algorithm
+**How large an exact Fibonacci value can this device compute in one second?**
 
-### sequential computation loop
+Every candidate `F(n)` is computed independently. There is no recurrence cache and no reuse from `F(n - 1)`: each measurement starts from the same ring elements, performs its own binary exponentiation, and records the observed compute time.
 
-the core computation loop in `runPurePowering()`:
+| Mode | Search behavior | Best for |
+|---|---|---|
+| **Iterative** | Walks from `F(1)` upward until one computation reaches 1,000 ms | Revealing a continuous sampled growth profile |
+| **Find Max** | Exponential probes, binary search, then bounded refinement | Approaching the observed boundary with fewer candidates |
 
-```swift
-var n: UInt64 = 1
-while true {
-    let compStart = clock.now
-    let fib = fibonacci(n: n)  // O(log n) ring exponentiation
-    let compTimeMs = measure(compStart)
-    
-    if compTimeMs >= 1000.0 {
-        break  // This computation took too long, n-1 was the last valid
-    }
-    
-    storeResult(n, compTimeMs)
-    n += 1
-}
+Timing noise means the boundary can move between runs. Iterative mode retains the last value below the limit; Find Max brackets and refines a run-local candidate rather than claiming a device-independent maximum.
+
+## The algebra
+
+The implementation starts from one compact identity:
+
+$$
+2\varphi^n = L_n + F_n\sqrt{5}
+$$
+
+It stores scaled integer pairs `(a, b)` for values of the form $a + b\sqrt{5}$. The initial pair `(1, 1)` is $1 + \sqrt{5} = 2\varphi$; multiplication and squaring stay inside the quadratic ring, and an exact right shift removes the scale factor after each operation. The $\sqrt{5}$ coefficient is `F(n)`.
+
+```text
+(a + b√5)(c + d√5) = (ac + 5bd) + (ad + bc)√5
+(a + b√5)²          = (a² + 5b²) + 2ab√5
 ```
 
-each f(n) is computed independently using binary exponentiation in the ℤ[√5] ring. there's no memoization or reuse—each computation starts from the base elements.
+Binary exponentiation reduces the control path to $\Theta(\log n)$ ring steps. The specialized square uses three large-integer products, while the general multiply recovers the cross term from `(a + b)(c + d) - ac - bd`.
 
-### ℤ[√5] ring exponentiation
+## From index to exact integer
 
-the `fibonacci(n:)` function uses o(log n) binary exponentiation:
-
-```swift
-func fibonacci(n: UInt64) -> BigInt {
-    if n <= 2 { return BigInt(1) }
-    
-    var step = Zrt5(1, 1)  // represents φ²
-    var fib = Zrt5(1, 1)   // initial result
-    var exp = n - 1
-    
-    while exp > 0 {
-        if (exp & 1) != 0 {
-            fib = fib.multiply(step)
-            fib.rightShift(1)  // normalization
-        }
-        step = step.square()
-        step.rightShift(1)  // normalization
-        exp >>= 1
-    }
-    
-    return fib.b  // F(n) is the √5 coefficient
-}
+```mermaid
+flowchart LR
+    N["candidate n"] --> P["binary exponentiation<br/>Θ(log n) ring steps"]
+    P --> R["large-integer product"]
+    R --> S{"selected path"}
+    S -->|"below threshold"| B["BigInt"]
+    S -->|"Auto / vDSP"| V["Accelerate · vDSP<br/>Double FFT"]
+    S -->|"explicit MPS"| M["MPSGraph<br/>Float32 FFT"]
+    M --> MC{"residue matches?"}
+    MC -->|"yes"| A["reconstructed integer"]
+    MC -->|"no"| V
+    V --> VC{"residue matches?"}
+    VC -->|"yes"| A
+    VC -->|"no"| B
+    B --> A
+    A --> F["√5 coefficient → F(n)"]
 ```
 
-this is mathematically equivalent to computing φ^n in the ring ℤ[√5] = {a + b√5 | a, b ∈ ℤ}, where φ = (1 + √5)/2 is the golden ratio.
+The current **Auto** policy routes transform-eligible work through vDSP. MPSGraph remains an explicitly selectable experiment on supported physical hardware; simulator execution transparently uses the CPU path. That routing is current source behavior, not a claim that one backend wins on every Apple device.
 
-### zrt5 ring structure
+## Compute paths and integrity
 
-**`Zrt5` struct**: represents element `a + b√5` in ℤ[√5]
-- `multiply(_:)`: multiplies two ring elements
-  - formula: `(a + b√5)(c + d√5) = (ac + 5bd) + (ad + bc)√5`
-  - uses fft-accelerated multiplication for large operands
-  - optimization: `5bd = (bd << 2) + bd` (bit shift + add instead of multiply)
-- `square()`: optimized squaring
-  - formula: `(a + b√5)² = (a² + 5b²) + 2ab√5`
-  - requires 3 multiplications (a², b², ab)
-  - uses fft for large operands
-- `rightShift(_:)`: divides by 2^n (normalization after each operation)
+| Path | Selection | Representation | Acceptance and fallback |
+|---|---|---|---|
+| **BigInt** | Multiply below 3,000 combined bits; square below 1,500 operand bits | Direct integer arithmetic | Used directly |
+| **Accelerate / vDSP** | Transform-eligible CPU path and current Auto policy | Double FFT with base-$2^{15}$ digits | Carry reconstruction, residue check modulo `4,294,967,291`, then `BigInt` fallback on failure |
+| **MPSGraph** | Explicit experimental selection on supported physical hardware | Float32 FFT with adaptive 1–3-bit digits | The same residue check, then vDSP and `BigInt` fallbacks |
 
-### fft-accelerated multiplication
+The modular residue is an integrity check—not a formal proof of equality. It prevents unchecked floating-point reconstruction from being treated as an integer result, while the fallback ladder preserves a direct exact path when a transform cannot be accepted.
 
-**`FFTMultiplier`**: provides fft-based multiplication for large bigint operations
+## A native computation instrument
 
-**threshold**: uses fft if:
-- multiplication: combined bit width > 192 bits
-- squaring: bit width > 96 bits
-- otherwise falls back to standard bigint multiplication
+<p align="center">
+  <img src="./docs/readme/dashboard.jpg" width="525" alt="The Fibonacci iPad dashboard showing search strategy, transform backend, compute-path telemetry, and the Run benchmark control">
+</p>
+<p align="center"><sub>The idle research dashboard on iPad. Measurements and charts appear live during a run.</sub></p>
 
-**base-2^15 digit representation**:
-- each digit represents 15 bits (base = 32768)
-- safe for double precision (< 2^53)
-- enables efficient fft convolution
+The interface exposes the computation instead of hiding it behind a single answer:
 
-**magnitude conversion (o(n))**:
-- `magnitudeToDigits()`: converts bigint magnitude to base-2^15 digits
-  - directly accesses `magnitude.words: [UInt]` (no string conversion)
-  - uses bit manipulation (shifts and masks) for o(n) conversion
-- `digitsToMagnitude()`: converts digits back to bigint
-  - builds `[UInt]` words directly from digits
-  - uses `BigUInt(words:)` constructor for o(n) conversion
+- **Strategy and backend controls** for Iterative, Find Max, Auto, vDSP, and MPSGraph.
+- **Live telemetry** for index, elapsed compute time, active backend, FFT size, operand workload, device availability, and fallback count.
+- **Logarithmic Swift Charts profile** with a visible one-second rule, bounded display sampling, and drag inspection.
+- **Responsive native layouts** for compact iPhone, iPad, and macOS presentations, with Dynamic Type, reduced-motion behavior, semantic materials, and dark-mode contrast.
 
-**fft convolution**:
-- uses complex fft (`vDSP_fft_zipD`) for convolution
-- forward fft on both operands
-- pointwise complex multiplication (`vDSP_zvmulD`)
-- inverse fft
-- scales by 1/n and extracts result with carry propagation
+The arithmetic runs in a detached user-initiated task. `OSAllocatedUnfairLock` protects progress, sampled history, transform state, and plan caches; the main actor polls progress at 60 Hz while chart data and backend telemetry refresh at 10 Hz so rendering does not sit on the arithmetic critical path.
 
-**vectorized squaring**:
-- single forward fft
-- vectorized complex square using vdsp:
-  - `vDSP_vmulD` for ar² and ai²
-  - `vDSP_vsubD` for (ar² - ai²)
-  - `vDSP_vsmulD` for 2*ar*ai
-- inverse fft and result extraction
+## Complexity, without the hand-wave
 
-## architecture
+| Layer | Asymptotic shape | What it describes |
+|---|---:|---|
+| Ring powering | $\Theta(\log n)$ operations | Multiply/square control flow for one `F(n)` |
+| Output size | $\Theta(n)$ digits | Fibonacci digit count grows linearly with the index |
+| FFT product | $O(d\log d)$ | Multiplication for operands with `d` transform digits |
+| Conservative composition | $O(n\log^2 n)$ | One result under the FFT multiplication model |
 
-### decoupled computation and ui updates
+These are algorithmic claims, not elapsed-time predictions. Real crossover points depend on operand size, radix, transform setup reuse, memory behavior, thermal state, build configuration, and the selected device.
 
-the app uses a **decoupled architecture** to ensure computation runs at full speed without blocking ui updates:
+## How to read the claims
 
-**computation thread** (`runPurePowering()`):
-- runs `nonisolated async` on a background task
-- computes f(n) sequentially, measuring each computation time
-- stores results in thread-safe storage (`nonisolated` properties protected by `DispatchQueue`)
-- never blocks on mainactor—computation runs at maximum speed
+- **Derived:** $\Theta(\log n)$ ring steps and $O(d\log d)$ FFT convolution describe asymptotic work.
+- **Implemented:** thresholds, backend policy, reconstruction checks, and fallbacks are inspectable in source.
+- **Observed:** a one-second result belongs to one device, OS, build, mode, backend, and run.
+- **Illustrative:** `F(100) = 354224848179261915075` demonstrates the interaction model; it is not a performance result.
 
-**ui update timer** (`startUIUpdateTimer()`):
-- separate `Task` running on `@MainActor`
-- polls thread-safe storage every ~33ms (~30fps)
-- updates `@Observable` properties to trigger swiftui updates
-- generates graph points from computation history
+No estimated “typical max” table is published here. Comparative results belong with a documented protocol, repeated runs, variability, and an environment-complete artifact.
 
-**thread-safe storage**:
-- `_latestN`, `_latestTimeMs`, `_latestTotalElapsed`, `_latestFib` (all `nonisolated`)
-- `_computationHistory` array storing all (n, timeMs, timestamp) entries
-- protected by `DispatchQueue` with barriers for thread safety
-- computed properties (`latestN`, etc.) provide safe read/write access
+## Run the app
 
-this architecture ensures:
-- computation runs unhindered at maximum speed
-- ui updates smoothly in real-time without blocking
-- no performance penalty from ui updates
+1. Open `fibonacci.xcodeproj` in a current Xcode release.
+2. Let Swift Package Manager resolve [`attaswift/BigInt`](https://github.com/attaswift/BigInt).
+3. Choose an iOS 17+, iPadOS 17+, or macOS 14+ destination and run with <kbd>⌘R</kbd>.
+4. Select a search strategy and transform backend, then choose **Run benchmark**.
 
-### graph visualization
+> [!IMPORTANT]
+> The MPSGraph experiment requires supported physical hardware. iOS Simulator runs use the vDSP fallback by design.
 
-**real-time graph**: shows computation time vs n with logarithmic axes
-- x-axis: n (logarithmic scale)
-- y-axis: computation time in milliseconds (logarithmic scale)
-- data points: sampled from computation history (max 2000 points for performance)
-- updates every ~33ms during computation
+### Test the numerical core
 
-the graph clearly shows the exponential growth in computation time as n increases.
+The reusable computation target has deterministic coverage for sequence boundaries, known large values, ring identities, vDSP reconstruction, signed operands, and the multi-prime NTT path:
 
-## major files
-
-### FibonacciViewModel.swift
-
-**`start()`**: initiates the computation
-- resets state
-- starts ui update timer
-- launches computation task on background thread
-
-**`runPurePowering()`**: main computation loop
-- computes f(1), f(2), f(3), ... sequentially
-- measures computation time for each
-- stops when a single computation takes ≥ 1000ms
-- stores results in thread-safe storage
-- finalizes results on mainactor
-
-**`fibonacci(n:)`**: o(log n) ring exponentiation
-- pure binary exponentiation in ℤ[√5] ring
-- no memoization, each computation is independent
-
-**`startUIUpdateTimer()`**: ui update loop
-- runs on mainactor
-- polls thread-safe storage every 33ms
-- updates observable properties
-- generates graph data from computation history
-
-### Zrt5.swift
-
-**`Zrt5` struct**: ring element `a + b√5`
-- `multiply(_:)`: ring multiplication with fft acceleration
-- `square()`: optimized squaring (3 multiplies)
-- `rightShift(_:)`: normalization by powers of 2
-
-**`fibonacciInterruptible()`**: (not currently used)
-- this function exists but is not called by the viewmodel
-- it was designed for a different approach (interruptible single-pass computation)
-- the current implementation uses sequential computation instead
-
-### FFTMultiplier.swift
-
-**`multiply(_:_:)`**: fft-accelerated multiplication
-- converts bigint magnitudes to base-2^15 digits
-- performs fft convolution for large operands
-- extracts result with carry propagation
-- falls back to standard multiply for small operands
-
-**`square(_:)`**: optimized fft squaring
-- single forward fft
-- vectorized complex square
-- inverse fft and result extraction
-
-**`magnitudeToDigits(_:)`**: o(n) conversion
-- direct access to `magnitude.words`
-- bit manipulation for efficient conversion
-
-**`digitsToMagnitude(_:)`**: o(n) conversion
-- builds words array directly
-- uses `BigUInt(words:)` constructor
-
-### ContentView.swift
-
-**ui states**:
-- `.idle`: shows title, algorithm info, "run f(n)" button
-- `.running`: shows progress ring, current n, real-time graph
-- `.completed`: shows final results, graph, number preview, "run again" button
-
-**graph card**: displays computation time vs n
-- logarithmic axes for exponential visualization
-- updates in real-time during computation
-- scientific notation for large n values
-
-**glassmorphic design**: modern "liquid glass" aesthetic
-- `ultraThinMaterial` backgrounds
-- subtle blur and vibrancy
-- rounded corners and shadows
-- dark mode optimized
-
-## performance characteristics
-
-### time complexity
-
-- **each f(n)**: o(log n) multiplications/squarings
-- **with fft**: each multiplication/squaring is o(n log n) where n is the number of digits
-- **overall**: as n grows, digit count grows linearly (log10(f(n)) ≈ n * 0.209), so computation time grows roughly o(n log² n) per f(n)
-
-### expected results
-
-on apple silicon (m3 max, m1/m2, a17 pro):
-
-| device | typical max n | digits | computation time |
-|--------|---------------|--------|------------------|
-| m3 max | 5,000 - 10,000 | ~1,000 - 2,000 | ~1000ms for last f(n) |
-| m1/m2 | 3,000 - 7,000 | ~600 - 1,400 | ~1000ms for last f(n) |
-| a17 pro | 2,000 - 5,000 | ~400 - 1,000 | ~1000ms for last f(n) |
-
-note: these are rough estimates. actual results depend on:
-- fft threshold triggering point
-- memory bandwidth
-- cpu thermal throttling
-- system load
-
-### why sequential computation?
-
-the sequential approach (computing f(1), f(2), f(3), ...) has several advantages:
-- **simple stopping condition**: stop when one computation takes too long
-- **smooth graph**: continuous data points for visualization
-- **predictable behavior**: no complex prediction or probing logic
-- **honest benchmark**: true one-shot computation with no pre-calibration
-
-each f(n) is computed independently, so there's no reuse or memoization—this is a pure benchmark of the computation speed.
-
-## requirements
-
-- **xcode**: 16.0+
-- **swift**: 5.9+
-- **platforms**: ios 17.0+ / macos 14.0+
-- **dependencies**:
-  - `leif-ibsen/BigInt` (via swift package manager)
-  - `Accelerate` framework (built-in, for fft)
-
-## setup
-
-1. open `fibonacci.xcodeproj` in xcode
-2. bigint package will resolve automatically via spm
-3. build and run (⌘R)
-4. press "run f(n)" to start the computation
-
-## project structure
-
-```
-fibonacci/
-├── fibonacci/
-│   ├── fibonacciApp.swift       # app entry point
-│   ├── ContentView.swift        # swiftui ui with real-time graph
-│   ├── FibonacciViewModel.swift # computation controller, state management
-│   ├── Zrt5.swift               # ℤ[√5] ring exponentiation
-│   └── FFTMultiplier.swift      # fft-accelerated bigint multiplication
-└── fibonacci.xcodeproj/
+```bash
+swift test
 ```
 
-## technical notes
+The same command is part of the repository’s GitHub verification workflow, alongside a Release build for iOS Simulator.
 
-### why ℤ[√5] ring?
+## Repository guide
 
-the fibonacci sequence has a closed-form expression using the golden ratio:
-- f(n) = (φⁿ - ψⁿ) / √5, where φ = (1 + √5)/2 and ψ = (1 - √5)/2
+| File | Responsibility |
+|---|---|
+| [`ContentView.swift`](./fibonacci/fibonacci/ContentView.swift) | Adaptive SwiftUI dashboard, controls, telemetry, results, and chart |
+| [`FibonacciViewModel.swift`](./fibonacci/fibonacci/FibonacciViewModel.swift) | Search modes, timing, concurrency, display sampling, and result checks |
+| [`FibonacciEngine.swift`](./fibonacci/fibonacci/FibonacciEngine.swift) | Reusable exact `F(n)` computation independent of UI and timing orchestration |
+| [`Zrt5.swift`](./fibonacci/fibonacci/Zrt5.swift) | Scaled $\mathbb{Z}[\sqrt{5}]$ multiplication and squaring |
+| [`FFTMultiplier.swift`](./fibonacci/fibonacci/FFTMultiplier.swift) | Thresholds, backend routing, carry reconstruction, residue checks, and fallbacks |
+| [`MPSGraphFFTBackend.swift`](./fibonacci/fibonacci/MPSGraphFFTBackend.swift) | Cached Metal/MPSGraph convolution graphs |
+| [`DesignTokens.swift`](./fibonacci/fibonacci/DesignTokens.swift) | Typography, color, spacing, radius, and motion tokens |
+| [`NTTMultiplier.swift`](./fibonacci/fibonacci/NTTMultiplier.swift) | Multi-prime NTT research implementation; present, but not wired into the active runtime path |
+| [`Package.swift`](./Package.swift) | Standalone `FibonacciCore` library and deterministic test entry point |
+| [`FibonacciCoreTests.swift`](./Tests/FibonacciCoreTests/FibonacciCoreTests.swift) | Known-value, ring, vDSP, and NTT correctness contracts |
 
-computing in the ring ℤ[√5] = {a + b√5 | a, b ∈ ℤ} allows exact integer arithmetic while leveraging this structure. the ring exponentiation computes φⁿ in the ring, and f(n) is extracted as the √5 coefficient.
+## Research context
 
-### fft base choice (2^15)
+- **[Fibonacci Benchmark — project context](https://luxiumservices.com/projects/fibonacci):** the public research artifact and interaction model.
+- **[Computing Fibonacci in ℤ[√5] with Ring Exponentiation](https://luxiumservices.com/blog/fibonacci-computation-swift):** the full mathematical and Apple-platform field note.
 
-base-2^15 (32768) was chosen because:
-- fits comfortably in double precision (< 2^53)
-- allows efficient bit manipulation conversion
-- balances fft size vs precision
-- each digit represents 15 bits, reducing fft array size
-
-### thread safety
-
-the decoupled architecture requires careful thread safety:
-- `@MainActor` on viewmodel ensures ui properties are main-actor isolated
-- `nonisolated` properties for thread-safe storage
-- `DispatchQueue` with barriers for atomic updates
-- computed properties provide safe access from any thread
-
-this allows the computation to run at maximum speed while ui updates smoothly.
-
-## license
-
-see project license file for details.
+<p align="center">
+  Built by <a href="https://github.com/collinw24"><strong>Collin Wiggins</strong></a> through <a href="https://luxiumservices.com"><strong>Luxium Services</strong></a>.<br>
+  <sub>Mathematics × systems programming × native interaction design.</sub>
+</p>

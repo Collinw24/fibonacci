@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="520" viewBox="0 0 1400 520" role="img" aria-labelledby="title description">
+  <title id="title">Fibonacci at the edge of a second</title>
+  <desc id="description">A dark technical banner with Fibonacci identities and a geometric golden-ratio spiral.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#05070d"/>
+      <stop offset="0.55" stop-color="#091220"/>
+      <stop offset="1" stop-color="#071c31"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#149dff"/>
+      <stop offset="1" stop-color="#5ce8ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="79%" cy="42%" r="54%">
+      <stop offset="0" stop-color="#118cff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#118cff" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#118cff" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#95d7ff" stroke-opacity="0.05"/>
+    </pattern>
+    <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="520" rx="30" fill="url(#background)"/>
+  <rect width="1400" height="520" rx="30" fill="url(#glow)"/>
+  <rect width="1400" height="520" rx="30" fill="url(#grid)"/>
+
+  <g transform="translate(72 62)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <circle cx="7" cy="2" r="4" fill="#43d1ff" filter="url(#softGlow)"/>
+    <text x="24" y="9" fill="#49ccff" font-size="16" font-weight="700" letter-spacing="4.5">APPLE SILICON COMPUTE LAB</text>
+
+    <text x="0" y="102" fill="#f8fbff" font-size="68" font-weight="720" letter-spacing="-2.5">Fibonacci at the</text>
+    <text x="0" y="174" fill="url(#accent)" font-size="68" font-weight="720" letter-spacing="-2.5">edge of a second.</text>
+
+    <text x="2" y="224" fill="#a7b5c5" font-size="20">Exact integer arithmetic across ring algebra, Accelerate, and Metal.</text>
+    <text x="2" y="261" fill="#718499" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">2φⁿ = Lₙ + Fₙ√5</text>
+
+    <g transform="translate(0 303)" font-size="14" font-weight="650" letter-spacing="1">
+      <rect width="206" height="46" rx="13" fill="#0d2034" stroke="#1d587c"/>
+      <text x="20" y="29" fill="#70e0ff">Θ(log n) RING STEPS</text>
+      <rect x="220" width="162" height="46" rx="13" fill="#0d2034" stroke="#1d587c"/>
+      <text x="245" y="29" fill="#d8e4ef">EXACT BIGINT</text>
+      <rect x="396" width="218" height="46" rx="13" fill="#0d2034" stroke="#1d587c"/>
+      <text x="421" y="29" fill="#d8e4ef">vDSP · MPSGRAPH</text>
+    </g>
+  </g>
+
+  <g fill="none" stroke="#4bd8ff" stroke-opacity="0.34" stroke-width="2">
+    <rect x="1000" y="82" width="256" height="256" rx="4"/>
+    <rect x="1000" y="338" width="158" height="98" rx="4"/>
+    <rect x="1158" y="338" width="98" height="98" rx="4"/>
+    <rect x="1256" y="278" width="60" height="60" rx="4"/>
+    <rect x="1256" y="338" width="60" height="38" rx="4"/>
+  </g>
+  <path d="M1000 338 A256 256 0 0 1 1256 82 A158 158 0 0 1 1098 240 A98 98 0 0 1 1196 338 A60 60 0 0 1 1256 278 A38 38 0 0 1 1218 316" fill="none" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" filter="url(#softGlow)"/>
+  <text x="1128" y="250" fill="#6ee6ff" fill-opacity="0.15" font-family="Georgia, serif" font-size="190" text-anchor="middle">φ</text>
+  <text x="1128" y="468" fill="#72889b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" text-anchor="middle">1 · 1 · 2 · 3 · 5 · 8 · 13 · 21 · 34 · 55</text>
+
+  <path d="M0 475 C270 435 500 512 757 466 C954 431 1150 447 1400 392" fill="none" stroke="#1599ff" stroke-opacity="0.08" stroke-width="2"/>
+</svg>
