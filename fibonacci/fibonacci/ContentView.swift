@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  fibonacci
 //
-//  Maximum F(n) in 1 Second — Liquid Glass UI
+//  Interactive Apple silicon Fibonacci benchmark dashboard.
 //
 
 import SwiftUI
@@ -15,16 +15,18 @@ import UIKit
 #endif
 
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = FibonacciViewModel()
-    @State private var buttonScale: CGFloat = 1.0
+    @State private var buttonScale: CGFloat = 1
+    @State private var selectedGraphX: Double?
 
     var body: some View {
         ZStack {
             backgroundView
 
             ScrollView {
-                VStack(spacing: 0) {
-                    Spacer().frame(height: Spacing.xxxl)
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    header
 
                     switch viewModel.state {
                     case .idle:
@@ -34,19 +36,22 @@ struct ContentView: View {
                     case .completed:
                         completedView
                     }
-
-                    Spacer().frame(height: Spacing.xxl)
                 }
+                .frame(maxWidth: 760)
                 .padding(.horizontal, Spacing.cardPadding + Spacing.xxxs)
+                .padding(.top, Spacing.xl)
+                .padding(.bottom, Spacing.xxl)
+                .frame(maxWidth: .infinity)
             }
         }
         #if os(macOS)
         .frame(minWidth: Sizes.minWindowWidth, minHeight: Sizes.minWindowHeight)
         #endif
         .preferredColorScheme(.dark)
+        .onChange(of: viewModel.state) { _, _ in
+            selectedGraphX = nil
+        }
     }
-
-    // MARK: - Background
 
     private var backgroundView: some View {
         ZStack {
@@ -58,384 +63,585 @@ struct ContentView: View {
             .ignoresSafeArea()
 
             RadialGradient(
-                colors: [Colors.accentGlow, Colors.clear],
-                center: .top,
-                startRadius: Spacing.xxl,
-                endRadius: 350
+                colors: [Colors.accentGlow.opacity(1.8), Colors.clear],
+                center: .topTrailing,
+                startRadius: 20,
+                endRadius: 480
             )
             .ignoresSafeArea()
         }
     }
 
+    private var header: some View {
+        VStack(alignment: .leading, spacing: Spacing.xxxs) {
+            Label("APPLE SILICON COMPUTE LAB", systemImage: "function")
+                .font(Typography.caption)
+                .fontWeight(.semibold)
+                .tracking(1.4)
+                .foregroundStyle(Colors.accent)
+
+            Text("Fibonacci at the edge of a second.")
+                .font(Typography.displayLarge)
+                .foregroundStyle(Colors.textPrimary)
+                .minimumScaleFactor(0.72)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Explore exact integer arithmetic across Accelerate and Metal, then inspect where the hardware spends its time.")
+                .font(Typography.bodyMedium)
+                .foregroundStyle(Colors.textSecondary)
+                .lineSpacing(3)
+                .frame(maxWidth: 620, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     // MARK: - Idle
 
     private var idleView: some View {
-        VStack(spacing: Spacing.xl) {
-            VStack(spacing: Spacing.xxs) {
-                Text("largest f(n) in 1 second")
-                    .font(Typography.displayLarge)
-                    .foregroundStyle(Colors.textPrimary)
-            }
-            .padding(.bottom, Spacing.xs)
-
-            GlassCard {
-                VStack(alignment: .leading, spacing: Spacing.xxs) {
-                    Text("ℤ√5 ring + fft")
-                        .font(Typography.bodyLarge)
-                        .foregroundStyle(Colors.textPrimary)
-
-                    Text("one shot o(log n) powering from base f(1,1)")
-                        .font(Typography.bodyMedium)
-                        .foregroundStyle(Colors.textSecondary)
-                        .lineSpacing(2)
-                }
-            }
-
-            modeSelector
-
+        VStack(spacing: Spacing.md) {
+            algorithmCard
+            configurationCard
+            backendStatusCard
             startButton
-
-            verifyButton
-
-            Text(viewModel.deviceInfo)
-                .font(Typography.bodySmall)
-                .foregroundStyle(Colors.textMuted)
+            verificationButton
         }
     }
 
-    private var verifyButton: some View {
-        Button(action: { viewModel.runVerification() }) {
-            HStack(spacing: Spacing.xs) {
-                if !viewModel.verificationMessage.isEmpty {
-                    Image(systemName: viewModel.isVerified ? "checkmark.seal.fill" : "xmark.seal.fill")
-                        .foregroundStyle(viewModel.isVerified ? Colors.success : Colors.error)
-                }
-                Text(viewModel.verificationMessage.isEmpty ? "verify algorithm" : viewModel.verificationMessage)
-                    .font(Typography.caption)
-                    .foregroundStyle(viewModel.verificationMessage.isEmpty ? Colors.textMuted : (viewModel.isVerified ? Colors.success : Colors.error))
-                    .lineLimit(1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var modeSelector: some View {
+    private var algorithmCard: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text("run mode")
-                    .font(Typography.bodySmall)
-                    .foregroundStyle(Colors.textTertiary)
-
-                Picker("Mode", selection: $viewModel.runMode) {
-                    Text("iterative").tag(FibonacciViewModel.RunMode.iterative)
-                    Text("find max").tag(FibonacciViewModel.RunMode.findMax)
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: Spacing.micro) {
+                        Text("Exact ring exponentiation")
+                            .font(Typography.titleMedium)
+                            .foregroundStyle(Colors.textPrimary)
+                        Text("One-shot powering in ℤ[√5], with independently checked FFT reconstruction.")
+                            .font(Typography.bodySmall)
+                            .foregroundStyle(Colors.textSecondary)
+                    }
+                    Spacer(minLength: Spacing.xs)
+                    Image(systemName: "sum")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundStyle(Colors.accent)
+                        .accessibilityHidden(true)
                 }
-                .pickerStyle(.segmented)
 
-                Text(viewModel.runMode == .iterative
-                     ? "test every n sequentially — watch the race"
-                     : "binary search for largest f(n) < 1 second")
-                    .font(Typography.caption)
-                    .foregroundStyle(Colors.textMuted)
+                Divider().overlay(Colors.divider)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Spacing.xs) {
+                        ValueTile(label: "POWERING", value: "O(log n)", tint: Colors.accent)
+                        ValueTile(label: "INTEGER", value: "BigInt", tint: Colors.textPrimary)
+                        ValueTile(label: "CHECK", value: "mod prime", tint: Colors.success)
+                    }
+                    VStack(spacing: Spacing.xs) {
+                        ValueTile(label: "POWERING", value: "O(log n)", tint: Colors.accent)
+                        ValueTile(label: "INTEGER", value: "BigInt", tint: Colors.textPrimary)
+                        ValueTile(label: "CHECK", value: "mod prime", tint: Colors.success)
+                    }
+                }
             }
+        }
+    }
+
+    private var configurationCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                configurationSection(
+                    title: "Search strategy",
+                    detail: viewModel.runMode == .iterative
+                        ? "Walk every index and reveal the growth curve live."
+                        : "Probe, bracket, then converge on the one-second boundary."
+                ) {
+                    Picker("Search strategy", selection: $viewModel.runMode) {
+                        Text("Iterative").tag(FibonacciViewModel.RunMode.iterative)
+                        Text("Find max").tag(FibonacciViewModel.RunMode.findMax)
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Divider().overlay(Colors.divider)
+
+                configurationSection(title: "Transform backend", detail: backendPreferenceDetail) {
+                    Picker("Transform backend", selection: $viewModel.backendPreference) {
+                        ForEach(TransformBackendPreference.allCases) { backend in
+                            Text(backend.shortTitle).tag(backend)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+        }
+        .disabled(viewModel.state == .running)
+    }
+
+    private func configurationSection<Control: View>(
+        title: String,
+        detail: String,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xxxs) {
+            Text(title)
+                .font(Typography.bodySmall)
+                .fontWeight(.semibold)
+                .foregroundStyle(Colors.textTertiary)
+            control()
+            Text(detail)
+                .font(Typography.caption)
+                .foregroundStyle(Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var backendPreferenceDetail: String {
+        switch viewModel.backendPreference {
+        case .automatic:
+            return FFTMultiplier.automaticBackendSummary + "."
+        case .vDSP:
+            return "Double-precision CPU FFT through Accelerate."
+        case .mpsGraph:
+            return viewModel.transformTelemetry.gpuAvailable
+                ? "Experimental Float32 GPU FFT with adaptive radix and integrity-checked fallback."
+                : "Metal is unavailable; computation will fall back to vDSP."
         }
     }
 
     private var startButton: some View {
-        Button(action: {
-            withAnimation(Animations.buttonPress) {
-                buttonScale = Animations.buttonScalePressed
+        Button(action: startRun) {
+            HStack(spacing: Spacing.xxxs) {
+                Image(systemName: "play.fill")
+                    .font(.caption)
+                Text("Run benchmark")
+                    .font(Typography.titleMedium)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Animations.buttonDelay) {
-                withAnimation(Animations.buttonRelease) {
-                    buttonScale = 1.0
-                }
-                viewModel.start()
-            }
-        }) {
-            Text("run f(n)")
-                .font(Typography.titleMedium)
-                .foregroundStyle(Colors.textPrimary)
-                .frame(maxWidth: .infinity)
-                .frame(height: Sizes.buttonHeight)
-                .background(
-                    ZStack {
-                        RoundedRectangle(cornerRadius: Radii.button)
-                            .fill(.ultraThinMaterial)
-
-                        RoundedRectangle(cornerRadius: Radii.button)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Colors.accentGradientStart, Colors.accentGradientEnd],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-
+            .foregroundStyle(Colors.textPrimary)
+            .frame(maxWidth: .infinity)
+            .frame(height: Sizes.buttonHeight)
+            .background(
+                RoundedRectangle(cornerRadius: Radii.button)
+                    .fill(
+                        LinearGradient(
+                            colors: [Colors.accentGradientStart, Colors.accentGradientEnd],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay {
                         RoundedRectangle(cornerRadius: Radii.button)
                             .stroke(Colors.cardBorderHighlight, lineWidth: 1)
                     }
-                )
-                .shadow(color: Colors.accentShadow, radius: Shadows.buttonRadius, y: Shadows.buttonY)
+            )
+            .shadow(color: Colors.accentShadow, radius: Shadows.buttonRadius, y: Shadows.buttonY)
         }
         .buttonStyle(.plain)
         .scaleEffect(buttonScale)
-        .accessibilityLabel("Start Fibonacci computation")
-        .accessibilityHint("Computes the largest Fibonacci number possible in one second")
-        #if os(macOS)
-        .frame(maxWidth: Sizes.buttonMaxWidth)
-        #endif
+        .accessibilityHint("Starts the selected exact Fibonacci benchmark")
+    }
+
+    private func startRun() {
+        guard !reduceMotion else {
+            viewModel.start()
+            return
+        }
+        withAnimation(Animations.buttonPress) {
+            buttonScale = Animations.buttonScalePressed
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Animations.buttonDelay) {
+            withAnimation(Animations.buttonRelease) {
+                buttonScale = 1
+            }
+            viewModel.start()
+        }
+    }
+
+    private var verificationButton: some View {
+        Button(action: { viewModel.runVerification() }) {
+            HStack(spacing: Spacing.inline) {
+                Image(systemName: viewModel.verificationMessage.isEmpty
+                      ? "checkmark.shield"
+                      : (viewModel.isVerified ? "checkmark.seal.fill" : "xmark.seal.fill"))
+                Text(viewModel.verificationMessage.isEmpty ? "Verify known values" : viewModel.verificationMessage)
+                    .lineLimit(2)
+            }
+            .font(Typography.caption)
+            .foregroundStyle(verificationColor)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var verificationColor: Color {
+        guard !viewModel.verificationMessage.isEmpty else { return Colors.textTertiary }
+        return viewModel.isVerified ? Colors.success : Colors.error
     }
 
     // MARK: - Running
 
     private var runningView: some View {
-        VStack(spacing: Spacing.lg) {
-            if viewModel.runMode == .findMax && !viewModel.searchPhase.isEmpty {
-                GlassCard {
-                    VStack(spacing: Spacing.inline) {
-                        Text(viewModel.searchPhase)
-                            .font(Typography.bodySmall)
-                            .foregroundStyle(Colors.accent)
-                            .textCase(.lowercase)
-
-                        if viewModel.searchLow > 0 || viewModel.searchHigh > 0 {
-                            Text("\(viewModel.searchLow.formatted()) – \(viewModel.searchHigh.formatted())")
-                                .font(Typography.caption)
-                                .foregroundStyle(Colors.textMuted)
-                                .monospacedDigit()
-                        }
-                    }
-                }
-            }
-
-            GlassCard {
-                VStack(spacing: Spacing.inline) {
-                    Text("current time")
-                        .font(Typography.bodySmall)
-                        .foregroundStyle(Colors.textTertiary)
-
-                    Text("\(String(format: "%.3f", viewModel.currentTimeMs))ms")
-                        .font(Typography.headlineMedium)
-                        .foregroundStyle(Colors.textPrimary)
-                        .monospacedDigit()
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Current computation time: \(String(format: "%.3f", viewModel.currentTimeMs)) milliseconds")
-
-            GlassCard {
-                VStack(spacing: Spacing.inline) {
-                    Text("current n")
-                        .font(Typography.bodySmall)
-                        .foregroundStyle(Colors.textTertiary)
-
-                    Text(viewModel.currentN.formatted())
-                        .font(Typography.headlineLarge)
-                        .foregroundStyle(Colors.accent)
-                        .monospacedDigit()
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Current n value: \(viewModel.currentN)")
-
+        VStack(spacing: Spacing.md) {
+            runStatusCard
+            backendStatusCard
+            graphCard
             fibonacciFeedView
 
-            if !viewModel.graphData.isEmpty {
-                graphCard
+            Button("Stop benchmark", role: .cancel) {
+                viewModel.reset()
+            }
+            .font(Typography.bodySmall)
+            .foregroundStyle(Colors.textTertiary)
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var runStatusCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                HStack {
+                    Label(searchStatusTitle, systemImage: "waveform.path.ecg")
+                        .font(Typography.bodySmall)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Colors.accent)
+                    Spacer()
+                    Text("LIVE")
+                        .font(Typography.caption)
+                        .fontWeight(.bold)
+                        .tracking(1)
+                        .foregroundStyle(Colors.success)
+                        .padding(.horizontal, Spacing.xxxs)
+                        .padding(.vertical, Spacing.micro)
+                        .background(Capsule().fill(Colors.successBackground))
+                }
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .lastTextBaseline, spacing: Spacing.sm) {
+                        primaryRunMetric
+                        Spacer(minLength: Spacing.xs)
+                        timeRunMetric
+                    }
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        primaryRunMetric
+                        timeRunMetric
+                    }
+                }
+
+                Gauge(value: min(viewModel.currentTimeMs, 1000), in: 0...1000) {
+                    Text("one-second limit")
+                } currentValueLabel: {
+                    Text("\(viewModel.currentTimeMs, format: .number.precision(.fractionLength(2))) ms")
+                        .monospacedDigit()
+                }
+                .gaugeStyle(.linearCapacity)
+                .tint(LinearGradient(colors: [Colors.accent, Colors.error], startPoint: .leading, endPoint: .trailing))
             }
         }
+    }
+
+    private var primaryRunMetric: some View {
+        VStack(alignment: .leading, spacing: Spacing.micro) {
+            Text("CURRENT INDEX")
+                .font(Typography.caption)
+                .tracking(0.9)
+                .foregroundStyle(Colors.textMuted)
+            Text("F(\(viewModel.currentN.formatted()))")
+                .font(Typography.displayMedium)
+                .foregroundStyle(Colors.textPrimary)
+                .monospacedDigit()
+                .minimumScaleFactor(0.65)
+        }
+    }
+
+    private var timeRunMetric: some View {
+        VStack(alignment: .leading, spacing: Spacing.micro) {
+            Text("COMPUTE")
+                .font(Typography.caption)
+                .tracking(0.9)
+                .foregroundStyle(Colors.textMuted)
+            Text("\(viewModel.currentTimeMs, format: .number.precision(.fractionLength(3))) ms")
+                .font(Typography.headlineMedium)
+                .foregroundStyle(Colors.accent)
+                .monospacedDigit()
+        }
+    }
+
+    private var searchStatusTitle: String {
+        if viewModel.runMode == .findMax, !viewModel.searchPhase.isEmpty {
+            let range = viewModel.searchHigh > 0
+                ? " · \(viewModel.searchLow.formatted())–\(viewModel.searchHigh.formatted())"
+                : ""
+            return viewModel.searchPhase.capitalized + range
+        }
+        return "Scanning exact results"
     }
 
     // MARK: - Completed
 
     private var completedView: some View {
         VStack(spacing: Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(Colors.successBackground)
-                    .frame(width: Sizes.successIcon, height: Sizes.successIcon)
+            resultHeroCard
+            verificationResultCard
+            backendStatusCard
+            graphCard
+            numberPreview
 
-                Image(systemName: "checkmark")
-                    .font(Typography.titleLarge)
-                    .foregroundStyle(Colors.success)
+            HStack(spacing: Spacing.xs) {
+                Button("Run again") {
+                    viewModel.reset()
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Copy result", action: copyResult)
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.finalDigitCount > 100_000)
             }
-            .accessibilityLabel("Computation complete")
+            .controlSize(.large)
+        }
+    }
 
-            GlassCard {
-                VStack(spacing: Spacing.sm) {
-                    VStack(spacing: Spacing.tight) {
-                        Text("maximum n")
-                            .font(Typography.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(Colors.textTertiary)
-                            .tracking(0.8)
+    private var resultHeroCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Label("Benchmark complete", systemImage: "checkmark.circle.fill")
+                    .font(Typography.bodySmall)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Colors.success)
 
-                        Text("f(\(viewModel.maxN.formatted()))")
-                            .font(Typography.displayMedium)
-                            .foregroundStyle(Colors.textPrimary)
+                Text("F(\(viewModel.maxN.formatted()))")
+                    .font(Typography.displayLarge)
+                    .foregroundStyle(Colors.textPrimary)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.62)
+
+                Text("Largest accepted result below the one-second computation boundary.")
+                    .font(Typography.bodySmall)
+                    .foregroundStyle(Colors.textSecondary)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Spacing.xs) {
+                        ValueTile(label: "DIGITS", value: viewModel.finalDigitCount.formatted(), tint: Colors.accent)
+                        ValueTile(label: "COMPUTE", value: "\(viewModel.finalTimeMs.formatted(.number.precision(.fractionLength(1)))) ms", tint: Colors.textPrimary)
+                        ValueTile(label: "POINTS", value: viewModel.graphData.count.formatted(), tint: Colors.textPrimary)
                     }
-
-                    Divider().background(Colors.divider)
-
-                    HStack(spacing: Spacing.sm) {
-                        VStack(spacing: Spacing.hair) {
-                            Text("digits")
-                                .font(Typography.caption)
-                                .foregroundStyle(Colors.textTertiary)
-                            Text(viewModel.finalDigitCount.formatted())
-                                .font(Typography.bodyLarge)
-                                .foregroundStyle(Colors.accent)
-                        }
-
-                        VStack(spacing: Spacing.hair) {
-                            Text(viewModel.finalTimeMs > 1010 ? "hardware limit" : "time")
-                                .font(Typography.caption)
-                                .foregroundStyle(viewModel.finalTimeMs > 1010 ? Colors.errorMuted : Colors.textTertiary)
-                            Text("\(String(format: "%.0f", viewModel.finalTimeMs)) ms")
-                                .font(Typography.bodyLarge)
-                                .foregroundStyle(viewModel.finalTimeMs > 1010 ? Colors.error : Colors.textPrimary)
-                        }
+                    VStack(spacing: Spacing.xs) {
+                        ValueTile(label: "DIGITS", value: viewModel.finalDigitCount.formatted(), tint: Colors.accent)
+                        ValueTile(label: "COMPUTE", value: "\(viewModel.finalTimeMs.formatted(.number.precision(.fractionLength(1)))) ms", tint: Colors.textPrimary)
                     }
                 }
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Maximum n: \(viewModel.maxN), \(viewModel.finalDigitCount) digits, computed in \(String(format: "%.0f", viewModel.finalTimeMs)) milliseconds")
+        }
+    }
 
-            GlassCard {
-                HStack(spacing: Spacing.xs) {
-                    Image(systemName: viewModel.isVerified ? "checkmark.seal.fill" : "xmark.seal.fill")
-                        .foregroundStyle(viewModel.isVerified ? Colors.success : Colors.error)
-
-                    Text(viewModel.isVerified ? "verified" : "unverified")
+    private var verificationResultCard: some View {
+        GlassCard {
+            HStack(alignment: .top, spacing: Spacing.xxxs) {
+                Image(systemName: viewModel.isVerified ? "checkmark.seal.fill" : "xmark.seal.fill")
+                    .foregroundStyle(viewModel.isVerified ? Colors.success : Colors.error)
+                VStack(alignment: .leading, spacing: Spacing.micro) {
+                    Text(viewModel.isVerified ? "Result verified" : "Verification failed")
                         .font(Typography.bodySmall)
+                        .fontWeight(.semibold)
                         .foregroundStyle(viewModel.isVerified ? Colors.success : Colors.error)
-
-                    Spacer()
-
                     Text(viewModel.verificationMessage)
                         .font(Typography.caption)
                         .foregroundStyle(Colors.textMuted)
-                        .lineLimit(1)
                 }
+                Spacer()
             }
-
-            if !viewModel.graphData.isEmpty {
-                graphCard
-            }
-
-            numberPreview
-
-            Button(action: { viewModel.reset() }) {
-                Text("run again")
-                    .font(Typography.titleSmall)
-                    .foregroundStyle(Colors.textPrimary)
-                    .frame(width: Sizes.resetButtonWidth, height: Sizes.buttonHeightSmall)
-                    .background(
-                        RoundedRectangle(cornerRadius: Radii.buttonSmall)
-                            .fill(Colors.buttonBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Radii.buttonSmall)
-                                    .stroke(Colors.buttonBorder, lineWidth: 1)
-                            )
-                    )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Run computation again")
         }
     }
 
-    // MARK: - Fibonacci Feed
+    // MARK: - Backend Telemetry
 
-    private var fibonacciFeedView: some View {
-        GlassCard {
+    private var backendStatusCard: some View {
+        let telemetry = viewModel.transformTelemetry
+
+        return GlassCard {
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text("current fibonacci")
-                    .font(Typography.bodyMedium)
-                    .fontWeight(.medium)
-                    .foregroundStyle(Colors.textSecondary)
-
-                ScrollView(.vertical, showsIndicators: false) {
-                    if viewModel.state == .running {
-                        Text("~\(viewModel.estimatedDigitCount) digits...")
-                            .font(Typography.codeLarge)
-                            .foregroundStyle(Colors.textSecondary.opacity(0.9))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Text("ready")
-                            .font(Typography.codeLarge)
-                            .foregroundStyle(Colors.textSecondary.opacity(0.9))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                HStack(alignment: .center) {
+                    Label("Compute path", systemImage: telemetry.activeBackend == .mpsGraph ? "gpu" : "cpu")
+                        .font(Typography.bodySmall)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Colors.textSecondary)
+                    Spacer()
+                    Text(viewModel.deviceInfo)
+                        .font(Typography.caption)
+                        .foregroundStyle(Colors.textMuted)
                 }
-                .frame(maxHeight: Sizes.feedMaxHeight)
+
+                HStack(spacing: Spacing.xxxs) {
+                    Circle()
+                        .fill(telemetry.activeBackend == .mpsGraph ? Colors.success : Colors.accent)
+                        .frame(width: 7, height: 7)
+                    Text(telemetry.activeBackend.title)
+                        .font(Typography.titleMedium)
+                        .foregroundStyle(Colors.textPrimary)
+                    Spacer()
+                    Text(telemetry.fftSize > 0 ? "\(formatCount(telemetry.fftSize)) bins" : "direct")
+                        .font(Typography.codeLarge)
+                        .foregroundStyle(Colors.textTertiary)
+                }
+
+                HStack(spacing: Spacing.xs) {
+                    telemetryDatum("REQUESTED", viewModel.backendPreference.title)
+                    telemetryDatum("WORKLOAD", telemetry.workloadBits > 0 ? "\(formatCount(telemetry.workloadBits)) bits" : "—")
+                    telemetryDatum("FALLBACKS", telemetry.fallbackCount.formatted())
+                }
+
+                if viewModel.backendPreference == .mpsGraph {
+                    Text(telemetry.gpuAvailable
+                         ? "GPU results use a conservative Float32 radix and modular integrity check before acceptance."
+                         : "No Metal device is available; vDSP is the safe fallback.")
+                        .font(Typography.caption)
+                        .foregroundStyle(Colors.textMuted)
+                }
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Current Fibonacci number being computed")
     }
 
-    // MARK: - Graph
+    private func telemetryDatum(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.hair) {
+            Text(label)
+                .font(.system(size: 8, weight: .semibold))
+                .tracking(0.7)
+                .foregroundStyle(Colors.textMuted)
+            Text(value)
+                .font(Typography.caption)
+                .foregroundStyle(Colors.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Live Number and Graph
+
+    private var fibonacciFeedView: some View {
+        GlassCard {
+            HStack(spacing: Spacing.xs) {
+                Image(systemName: "textformat.123")
+                    .font(.title3)
+                    .foregroundStyle(Colors.accent)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Spacing.micro) {
+                    Text("Current magnitude")
+                        .font(Typography.bodySmall)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Colors.textSecondary)
+                    Text("Approximately \(viewModel.estimatedDigitCount.formatted()) decimal digits")
+                        .font(Typography.codeLarge)
+                        .foregroundStyle(Colors.textPrimary)
+                        .monospacedDigit()
+                }
+                Spacer()
+            }
+        }
+    }
 
     private var graphCard: some View {
-        GlassCard {
+        let validData = viewModel.graphData.filter { $0.n > 0 && $0.timeMs >= 0.001 }
+        let selectedPoint = nearestPoint(in: validData)
+
+        return GlassCard {
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                HStack {
-                    Text("computation time vs n")
-                        .font(Typography.bodyMedium)
-                        .fontWeight(.medium)
-                        .foregroundStyle(Colors.textSecondary)
-                    Spacer()
-                    if viewModel.maxN > 0 {
-                        Text("n=\(formatScientific(viewModel.maxN))")
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: Spacing.micro) {
+                        Text("Computation profile")
+                            .font(Typography.titleMedium)
+                            .foregroundStyle(Colors.textPrimary)
+                        Text("Drag across the chart to inspect an exact sample.")
                             .font(Typography.caption)
-                            .foregroundStyle(Colors.textQuaternary)
+                            .foregroundStyle(Colors.textMuted)
+                    }
+                    Spacer()
+                    if let selectedPoint {
+                        VStack(alignment: .trailing, spacing: Spacing.hair) {
+                            Text("F(\(selectedPoint.n.formatted()))")
+                                .font(Typography.caption)
+                                .foregroundStyle(Colors.accent)
+                            Text("\(selectedPoint.timeMs.formatted(.number.precision(.fractionLength(3)))) ms")
+                                .font(Typography.codeLarge)
+                                .foregroundStyle(Colors.textPrimary)
+                        }
                     }
                 }
 
-                let validData = viewModel.graphData.filter { $0.timeMs >= 0.001 }
-
                 if validData.count >= 2 {
-                    let nValues = validData.map { Double($0.n) }
-                    let timeValues = validData.map { $0.timeMs }
+                    let minN = max(1, Double(validData.map(\.n).min() ?? 1))
+                    let maxN = max(minN * 1.01, Double(validData.map(\.n).max() ?? 1))
+                    let minTime = max(0.001, validData.map(\.timeMs).min() ?? 0.001)
+                    let maxTime = max(1_200, (validData.map(\.timeMs).max() ?? 1) * 1.2)
 
-                    let minN = max(1.0, nValues.min() ?? 1.0)
-                    let maxN = max(nValues.max() ?? 1.0, Double(viewModel.currentN))
+                    Chart {
+                        ForEach(validData) { point in
+                            AreaMark(
+                                x: .value("Index", Double(point.n)),
+                                yStart: .value("Floor", minTime),
+                                yEnd: .value("Time", point.timeMs)
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Colors.accent.opacity(0.28), Colors.accent.opacity(0.01)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .interpolationMethod(.monotone)
 
-                    let minTime = max(0.001, timeValues.min() ?? 0.001)
-                    let maxTime = max(timeValues.max() ?? 1.0, max(viewModel.currentTimeMs, minTime * 10))
+                            LineMark(
+                                x: .value("Index", Double(point.n)),
+                                y: .value("Time", point.timeMs)
+                            )
+                            .foregroundStyle(Colors.accent)
+                            .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                            .interpolationMethod(.monotone)
+                        }
 
-                    Chart(validData) { point in
-                        LineMark(
-                            x: .value("n", point.n),
-                            y: .value("time", point.timeMs)
-                        )
-                        .foregroundStyle(Colors.accent)
+                        RuleMark(y: .value("One second", 1000))
+                            .foregroundStyle(Colors.errorMuted)
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                            .annotation(position: .top, alignment: .trailing) {
+                                Text("1 s limit")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(Colors.errorMuted)
+                            }
+
+                        if let selectedPoint {
+                            RuleMark(x: .value("Selected", Double(selectedPoint.n)))
+                                .foregroundStyle(Colors.textTertiary)
+                            PointMark(
+                                x: .value("Selected index", Double(selectedPoint.n)),
+                                y: .value("Selected time", selectedPoint.timeMs)
+                            )
+                            .symbolSize(48)
+                            .foregroundStyle(Colors.textPrimary)
+                        }
                     }
                     .chartXScale(domain: minN...maxN, type: .log)
                     .chartYScale(domain: minTime...maxTime, type: .log)
-                    .frame(height: Sizes.graphHeight)
-                    .animation(Animations.graphUpdate, value: validData.count)
-                    .accessibilityLabel("Graph showing computation time versus n on logarithmic scales")
+                    .chartXAxisLabel("Fibonacci index", alignment: .center)
+                    .chartYAxisLabel("Milliseconds")
+                    .chartXSelection(value: $selectedGraphX)
+                    .frame(height: Sizes.graphHeight + 40)
+                    .animation(reduceMotion ? nil : Animations.graphUpdate, value: validData.count)
+                    .accessibilityLabel("Interactive logarithmic chart of Fibonacci index and computation time")
                 } else {
-                    Rectangle()
-                        .fill(.clear)
-                        .frame(height: Sizes.graphHeight)
+                    ContentUnavailableView {
+                        Label("Waiting for samples", systemImage: "chart.xyaxis.line")
+                    } description: {
+                        Text("The live profile appears as the benchmark advances.")
+                    }
+                    .frame(height: Sizes.graphHeight)
+                    .foregroundStyle(Colors.textMuted)
                 }
             }
         }
     }
 
-    private func formatScientific(_ n: UInt64) -> String {
-        let d = Double(n)
-        if d >= 1_000_000 {
-            let exp = Int(log10(d))
-            let mantissa = d / pow(10, Double(exp))
-            return String(format: "%.2fe%d", mantissa, exp)
-        } else if d >= 1_000 {
-            return String(format: "%.0fk", d / 1_000)
-        } else {
-            return "\(n)"
+    private func nearestPoint(in points: [FibonacciViewModel.GraphPoint]) -> FibonacciViewModel.GraphPoint? {
+        guard let selectedGraphX else { return nil }
+        return points.min {
+            abs(log(Double($0.n)) - log(selectedGraphX))
+                < abs(log(Double($1.n)) - log(selectedGraphX))
         }
     }
 
@@ -445,64 +651,51 @@ struct ContentView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: Spacing.xxxs) {
                 HStack {
-                    Text("result")
+                    Text("Exact result")
                         .font(Typography.bodySmall)
+                        .fontWeight(.semibold)
                         .foregroundStyle(Colors.textSecondary)
                     Spacer()
-                    Button(action: copyResult) {
-                        HStack(spacing: Spacing.hair) {
-                            Image(systemName: "doc.on.doc")
-                                .accessibilityHidden(true)
-                            Text("copy")
-                        }
-                        .font(Typography.caption)
-                        .foregroundStyle(Colors.textTertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Copy Fibonacci result to clipboard")
-                }
-
-                // Skip string conversion for very large numbers (would freeze UI)
-                if viewModel.finalDigitCount > 100000 {
                     Text("\(viewModel.finalDigitCount.formatted()) digits")
-                        .font(Typography.codeSmall)
-                        .foregroundStyle(Colors.textSecondary.opacity(0.8))
-                    Text("(too large to display)")
                         .font(Typography.caption)
                         .foregroundStyle(Colors.textMuted)
-                } else {
-                    let fibStr = viewModel.finalFibonacci.description
+                }
 
-                    if fibStr.count < 100 {
+                if viewModel.finalDigitCount > 100_000 {
+                    Text("The exact integer is retained in memory but omitted here to keep the interface responsive.")
+                        .font(Typography.bodySmall)
+                        .foregroundStyle(Colors.textTertiary)
+                } else {
+                    let value = viewModel.finalFibonacci.description
+                    if value.count < 120 {
                         ScrollView(.horizontal, showsIndicators: false) {
-                            Text(fibStr)
-                                .font(.system(.caption2, design: .monospaced))
+                            Text(value)
+                                .font(Typography.codeLarge)
                                 .foregroundStyle(Colors.textSecondary)
+                                .textSelection(.enabled)
                         }
                     } else {
                         VStack(alignment: .leading, spacing: Spacing.micro) {
-                            Text(String(fibStr.prefix(50)) + "...")
-                                .font(Typography.codeSmall)
-                                .foregroundStyle(Colors.textSecondary)
-                            Text("..." + String(fibStr.suffix(50)))
-                                .font(Typography.codeSmall)
-                                .foregroundStyle(Colors.textSecondary)
+                            Text(String(value.prefix(58)) + "…")
+                            Text("…" + String(value.suffix(58)))
                         }
+                        .font(Typography.codeSmall)
+                        .foregroundStyle(Colors.textSecondary)
+                        .textSelection(.enabled)
                     }
                 }
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Fibonacci result with \(viewModel.finalDigitCount) digits")
     }
 
     // MARK: - Helpers
 
+    private func formatCount(_ value: Int) -> String {
+        value.formatted(.number.notation(.compactName))
+    }
+
     private func copyResult() {
-        // Skip copy for very large numbers
-        if viewModel.finalDigitCount > 100000 {
-            return
-        }
+        guard viewModel.finalDigitCount <= 100_000 else { return }
         let text = viewModel.finalFibonacci.description
         #if os(macOS)
         NSPasteboard.general.clearContents()
@@ -513,7 +706,31 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Glass Card
+private struct ValueTile: View {
+    let label: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.micro) {
+            Text(label)
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(Colors.textMuted)
+            Text(value)
+                .font(Typography.bodyLarge)
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(Spacing.xxxs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Radii.buttonSmall)
+                .fill(Colors.buttonBackground.opacity(0.6))
+        )
+    }
+}
 
 struct GlassCard<Content: View>: View {
     let content: Content
@@ -541,8 +758,4 @@ struct GlassCard<Content: View>: View {
             )
             .shadow(color: Colors.shadowDark, radius: Shadows.cardRadius, y: Shadows.cardY)
     }
-}
-
-#Preview {
-    ContentView()
 }

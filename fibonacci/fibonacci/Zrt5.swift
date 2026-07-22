@@ -27,10 +27,10 @@ struct Zrt5 {
     nonisolated func multiply(_ x: Zrt5) -> Zrt5 {
         let ac = FFTMultiplier.multiply(a, x.a)
         let bd = FFTMultiplier.multiply(b, x.b)
-        let ad = FFTMultiplier.multiply(a, x.b)
-        let bc = FFTMultiplier.multiply(b, x.a)
+        let sumProduct = FFTMultiplier.multiply(a + b, x.a + x.b)
+        let cross = sumProduct - ac - bd
         let fiveBd = (bd << 2) + bd
-        return Zrt5(ac + fiveBd, ad + bc)
+        return Zrt5(ac + fiveBd, cross)
     }
 
     /// Square in ℤ[√5]: (a + b√5)² = (a² + 5b²) + 2ab√5

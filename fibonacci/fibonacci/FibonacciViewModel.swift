@@ -2,8 +2,7 @@
 //  FibonacciViewModel.swift
 //  fibonacci
 //
-//  Pure C++ spirit: O(log n) ring exponentiation
-//  Single pass with deterministic predictive stopping
+//  Benchmark orchestration, timing, and live observation state.
 //
 
 import Foundation
@@ -49,6 +48,8 @@ final class FibonacciViewModel {
 
     var state: State = .idle
     var runMode: RunMode = .iterative
+    var backendPreference: TransformBackendPreference = .automatic
+    var transformTelemetry = FFTMultiplier.telemetrySnapshot()
     
     // Progress
     var currentN: UInt64 = 0
@@ -80,7 +81,7 @@ final class FibonacciViewModel {
     
     // Graph data: n vs computation time
     struct GraphPoint: Identifiable {
-        let id = UUID()
+        var id: UInt64 { n }
         let n: UInt64
         let timeMs: Double
         let digitCount: Int
@@ -215,6 +216,8 @@ final class FibonacciViewModel {
     func start() {
         guard state != .running else { return }
 
+        FFTMultiplier.setBackendPreference(backendPreference)
+        transformTelemetry = FFTMultiplier.telemetrySnapshot()
         state = .running
         currentN = 0
         currentTimeMs = 0.0
@@ -277,6 +280,12 @@ final class FibonacciViewModel {
                 guard let self = self, self.state == .running else { return }
 
                 let packet = self.readLatestValues()
+                self._updateCounter += 1
+
+                if self._updateCounter.isMultiple(of: 6) {
+                    self.refreshGraphData()
+                    self.transformTelemetry = FFTMultiplier.telemetrySnapshot()
+                }
                 guard packet.n != self._lastDisplayedN else { return }
                 self._lastDisplayedN = packet.n
 
@@ -286,12 +295,22 @@ final class FibonacciViewModel {
                 self.searchPhase = packet.phase
                 self.searchLow = packet.low
                 self.searchHigh = packet.high
-                self._updateCounter += 1
+
             }
     }
 
     @ObservationIgnored private var _lastDisplayedN: UInt64 = 0
     
+    private func refreshGraphData() {
+        graphData = getComputationHistoryForGraph().map { entry in
+            GraphPoint(
+                n: entry.n,
+                timeMs: entry.timeMs,
+                digitCount: Int(Double(entry.n) * Self.log10Phi)
+            )
+        }
+    }
+
     private func stopUIUpdateTimer() {
         updateCancellable?.cancel()
         updateCancellable = nil
@@ -318,7 +337,7 @@ final class FibonacciViewModel {
         while true {
             if Task.isCancelled { break }
             let compStart = clock.now
-            let fib = fibonacci(n: n)
+            let fib = FibonacciEngine.value(at: n)
             let compDuration = compStart.duration(to: clock.now)
             let compTimeMs = durationToMs(compDuration)
             let now = clock.now
@@ -366,6 +385,7 @@ final class FibonacciViewModel {
             self.finalTimeMs = finalHistory.last?.timeMs ?? 0.0
             self.isVerified = verification.passed
             self.verificationMessage = verification.message
+            self.transformTelemetry = FFTMultiplier.telemetrySnapshot()
             self.state = .completed
         }
     }
@@ -393,7 +413,7 @@ final class FibonacciViewModel {
             updateSearchStatus(n: probeN, timeMs: 0, totalElapsed: totalElapsed, phase: "probing", low: 0, high: 0)
 
             let compStart = clock.now
-            let fib = fibonacci(n: probeN)
+            let fib = FibonacciEngine.value(at: probeN)
             let compTimeMs = durationToMs(compStart.duration(to: clock.now))
 
             storeComputationResult(n: probeN, timeMs: compTimeMs, totalElapsed: totalElapsed)
@@ -424,7 +444,7 @@ final class FibonacciViewModel {
             updateSearchStatus(n: mid, timeMs: 0, totalElapsed: totalElapsed, phase: "binary search", low: low, high: high)
 
             let compStart = clock.now
-            let fib = fibonacci(n: mid)
+            let fib = FibonacciEngine.value(at: mid)
             let compTimeMs = durationToMs(compStart.duration(to: clock.now))
 
             storeComputationResult(n: mid, timeMs: compTimeMs, totalElapsed: totalElapsed)
@@ -460,7 +480,7 @@ final class FibonacciViewModel {
             updateSearchStatus(n: probeN, timeMs: 0, totalElapsed: totalElapsed, phase: "optimizing \(attempts)/\(maxAttempts)", low: lastGoodN, high: probeN + step)
 
             let compStart = clock.now
-            let fib = fibonacci(n: probeN)
+            let fib = FibonacciEngine.value(at: probeN)
             let compTimeMs = durationToMs(compStart.duration(to: clock.now))
 
             storeComputationResult(n: probeN, timeMs: compTimeMs, totalElapsed: totalElapsed)
@@ -473,7 +493,7 @@ final class FibonacciViewModel {
                     if Task.isCancelled { break }
                     let mid = lo + (hi - lo) / 2
                     let midStart = clock.now
-                    let midFib = fibonacci(n: mid)
+                    let midFib = FibonacciEngine.value(at: mid)
                     let midTime = durationToMs(midStart.duration(to: clock.now))
 
                     if midTime >= targetMs {
@@ -519,32 +539,11 @@ final class FibonacciViewModel {
             self.finalTimeMs = finalTime
             self.isVerified = verification.passed
             self.verificationMessage = verification.message
+            self.transformTelemetry = FFTMultiplier.telemetrySnapshot()
             self.state = .completed
         }
     }
 
-    /// Compute F(n) using O(log n) ring exponentiation
-    nonisolated private func fibonacci(n: UInt64) -> BigInt {
-        if n == 0 { return BigInt(0) }
-        if n <= 2 { return BigInt(1) }
-        
-        // Use the Zrt5 ring exponentiation method
-        var step = Zrt5(1, 1)
-        var fib = Zrt5(1, 1)
-        var exp = n - 1
-        
-        while exp > 0 {
-            if (exp & 1) != 0 {
-                fib = fib.multiply(step)
-                fib.rightShift(1)
-            }
-            step = step.square()
-            step.rightShift(1)
-            exp >>= 1
-        }
-        
-        return fib.b
-    }
     
     nonisolated private func durationToMs(_ d: Duration) -> Double {
         let c = d.components
@@ -569,7 +568,7 @@ final class FibonacciViewModel {
         var messages: [String] = []
 
         for test in Self.knownValues {
-            let computed = fibonacci(n: test.n)
+            let computed = FibonacciEngine.value(at: test.n)
             let computedStr = computed.description
 
             // Check digit count
